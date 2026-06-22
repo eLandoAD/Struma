@@ -7,6 +7,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -28,6 +31,7 @@ public class SignalingSessionManager {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final Map<String, CallSession> sessions = new ConcurrentHashMap<>();
+    private final List<CallSession> completedSessions = new ArrayList<>();
     private final Deque<String> waitingCustomers = new ArrayDeque<>();
     private final Deque<WebSocketSession> availableConsultants = new ArrayDeque<>();
     private final Object matchLock = new Object();
@@ -167,6 +171,7 @@ public class SignalingSessionManager {
 
         cancelTimeout(sessionId); // risposto per davvero: il timer si ferma qui
 
+        session.setAnsweredAt(Instant.now());
         session.setStatus(CallSession.Status.ACTIVE);
         send(session.getConsultantSocket(), "call_assigned", sessionId, Map.of("role", "caller"));
         send(session.getCustomerSocket(), "call_assigned", sessionId, Map.of("role", "callee"));
@@ -200,25 +205,4 @@ public class SignalingSessionManager {
     }
 
     private void endSession(CallSession session, WebSocketSession initiator, String reason) throws IOException {
-        if (session.getStatus() == CallSession.Status.ENDED) return;
-
-        cancelTimeout(session.getId());
-        session.setStatus(CallSession.Status.ENDED);
-
-        WebSocketSession other = session.otherParty(initiator);
-        if (other != null && other.isOpen()) {
-            send(other, "hangup", session.getId(), Map.of("reason", reason));
-        }
-        sessions.remove(session.getId());
-        System.out.println("[RIMOSSA] sessione " + session.getId() + " (motivo: " + reason + ") | totale sessioni rimanenti: " + sessions.size());
-    }
-
-    private void send(WebSocketSession recipient, String type, String sessionId, Object payload) throws IOException {
-        if (recipient == null || !recipient.isOpen()) return;
-        ObjectNode envelope = mapper.createObjectNode();
-        envelope.put("type", type);
-        if (sessionId != null) envelope.put("sessionId", sessionId);
-        envelope.set("payload", mapper.valueToTree(payload));
-        recipient.sendMessage(new TextMessage(mapper.writeValueAsString(envelope)));
-    }
-}
+        if (session.getStatus() == CallSession.Status.ENDED || session.getStatus() == CallSession.Status.MIS
