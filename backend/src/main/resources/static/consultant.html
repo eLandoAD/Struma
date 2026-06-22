@@ -20,15 +20,55 @@
       ws.send(JSON.stringify({ type, sessionId: currentSessionId, payload: payload || {} }));
     }
 
+    function createFakeVideoStream() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 240;
+      const ctx = canvas.getContext('2d');
+
+      function draw() {
+        const t = Date.now() / 1000;
+        ctx.fillStyle = `hsl(${(t * 40) % 360}, 70%, 50%)`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'white';
+        ctx.font = '24px sans-serif';
+        ctx.fillText('Consultant (finto)', 20, 120);
+        ctx.fillText(new Date().toLocaleTimeString(), 20, 160);
+        requestAnimationFrame(draw);
+      }
+      draw();
+
+      return canvas.captureStream(30);
+    }
+
+    function createFakeVideoStream() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 240;
+      const ctx = canvas.getContext('2d');
+
+      function draw() {
+        const t = Date.now() / 1000;
+        ctx.fillStyle = `hsl(${(t * 40) % 360}, 70%, 50%)`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'white';
+        ctx.font = '24px sans-serif';
+        ctx.fillText('Consultant (finto)', 20, 120);
+        ctx.fillText(new Date().toLocaleTimeString(), 20, 160);
+        requestAnimationFrame(draw);
+      }
+      draw();
+
+      return canvas.captureStream(30);
+    }
+
     async function startCall() {
       pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
       pc.onicecandidate = (e) => { if (e.candidate) send('ice_candidate', { candidate: e.candidate }); };
       pc.onconnectionstatechange = () => log('stato connessione: ' + pc.connectionState);
-
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = createFakeVideoStream();
       document.getElementById('localVideo').srcObject = stream;
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
-
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       send('offer', { sdp: offer });
