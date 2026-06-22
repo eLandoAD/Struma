@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Test WebSocket echo</title>
+<style>
+  body { font-family: sans-serif; max-width: 500px; margin: 40px auto; }
+  #log { border: 1px solid #ccc; height: 200px; overflow-y: auto; padding: 8px; margin-top: 12px; font-size: 14px; }
+  #log div { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+  <h1>Test eco WebSocket</h1>
+  <p>Apri questa pagina in due tab. Scrivi qualcosa e premi invia: deve tornare indietro con il prefisso "echo:".</p>
+  <input id="msg" type="text" placeholder="scrivi un messaggio" style="width: 70%;">
+  <button id="send">Invia</button>
+  <div id="log"></div>
+
+  <script>
+    const log = document.getElementById('log');
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${location.host}/ws/signal`);
+
+    ws.onopen = () => addLog('connesso al server');
+    ws.onclose = () => addLog('connessione chiusa');
+    ws.onerror = (e) => addLog('errore: ' + e);
+    ws.onmessage = (event) => addLog('ricevuto: ' + event.data);
+
+    document.getElementById('send').onclick = () => {
+      const input = document.getElementById('msg');
+      ws.send(input.value);
+      addLog('inviato: ' + input.value);
+      input.value = '';
+    };
+
+    function addLog(text) {
+      const line = document.createElement('div');
+      line.textContent = text;
+      log.appendChild(line);
+      log.scrollTop = log.scrollHeight;
+    }
+  </script>
+</body>
+</html>

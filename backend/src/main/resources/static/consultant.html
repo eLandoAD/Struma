@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Consultant - pubblica video</title>
+</head>
+
+<body>
+  <h1>Consultant (pubblica video)</h1>
+  <video id="localVideo" autoplay muted playsinline width="400"></video>
+  <pre id="log"></pre>
+  <script>
+    const log = (msg) => { document.getElementById('log').textContent += msg + "\n"; console.log(msg); };
+    const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/signal';
+    const ws = new WebSocket(wsUrl);
+    let pc, currentSessionId;
+
+    function send(type, payload) {
+      ws.send(JSON.stringify({ type, sessionId: currentSessionId, payload: payload || {} }));
+    }
+
+    async function startCall() {
+      pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      pc.onicecandidate = (e) => { if (e.candidate) send('ice_candidate', { candidate: e.candidate }); };
+      pc.onconnectionstatechange = () => log('stato connessione: ' + pc.connectionState);
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      document.getElementById('localVideo').srcObject = stream;
+      stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      send('offer', { sdp: offer });
+      log('offer inviata per sessione ' + currentSessionId);
+    }
+
+    ws.onopen = () => {
+      log('connesso al server, mi dichiaro disponibile');
+      ws.send(JSON.stringify({ type: 'consultant_available' }));
+    };
+
+    ws.onmessage = async (event) => {
+      const msg = JSON.parse(event.data);
+      log('ricevuto: ' + msg.type);
+
+      if (msg.type === 'incoming_customer') {
+        currentSessionId = msg.sessionId;
+        log('customer in arrivo (' + msg.payload.sourcePage + ') — rispondo automaticamente (test)');
+        send('answer_customer');
+      } else if (msg.type === 'call_assigned' && msg.payload.role === 'caller') {
+        try {
+          await startCall();
+        } catch (e) {
+          log('ERRORE in startCall: ' + e.name + ' - ' + e.message);
+        }
+      } else if (msg.type === 'answer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(msg.payload.sdp));
+        log('answer ricevuta');
+      } else if (msg.type === 'ice_candidate') {
+        try { await pc.addIceCandidate(new RTCIceCandidate(msg.payload.candidate)); }
+        catch (e) { log('errore ICE candidate: ' + e); }
+      } else if (msg.type === 'hangup') {
+        log("chiamata terminata dall'altra parte");
+        if (pc) pc.close();
+      }
+    };
+
+    ws.onerror = (e) => log('errore websocket: ' + e);
+  </script>
+</body>
+
+</html>
