@@ -47,10 +47,15 @@ public class SignalingSessionManager {
 
     public void handleDisconnect(WebSocketSession socket) throws IOException {
         synchronized (matchLock) {
-            availableConsultants.remove(socket);
+            boolean wasAvailable = availableConsultants.remove(socket);
+            if (wasAvailable) {
+                System.out.println("[CONSULENTE RIMOSSO] dal pool disponibili (disconnesso prima di essere accoppiato)");
+            }
         }
         for (CallSession session : sessions.values()) {
             if (socket.equals(session.getCustomerSocket()) || socket.equals(session.getConsultantSocket())) {
+                System.out.println("[DISCONNESSIONE] socket appartenente a sessione " + session.getId() + " (stato: "
+                        + session.getStatus() + ")");
                 endSession(session, socket, "disconnect");
             }
         }
@@ -61,6 +66,7 @@ public class SignalingSessionManager {
         String sessionId = UUID.randomUUID().toString();
         CallSession session = new CallSession(sessionId, sourcePage, customer);
         sessions.put(sessionId, session);
+        System.out.println("[CREATA] sessione " + sessionId + " | totale sessioni attive: " + sessions.size());
 
         send(customer, "queued", sessionId, Map.of("sourcePage", sourcePage));
 
@@ -100,7 +106,8 @@ public class SignalingSessionManager {
 
     private void handleAnswerCustomer(WebSocketSession consultant, String sessionId) throws IOException {
         CallSession session = sessions.get(sessionId);
-        if (session == null || !consultant.equals(session.getConsultantSocket())) return;
+        if (session == null || !consultant.equals(session.getConsultantSocket()))
+            return;
 
         session.setAnsweredAt(Instant.now());
         session.setStatus(CallSession.Status.ACTIVE);
@@ -110,7 +117,8 @@ public class SignalingSessionManager {
 
     private void handleDeclineCustomer(WebSocketSession consultant, String sessionId) throws IOException {
         CallSession session = sessions.get(sessionId);
-        if (session == null || !consultant.equals(session.getConsultantSocket())) return;
+        if (session == null || !consultant.equals(session.getConsultantSocket()))
+            return;
 
         session.setConsultantSocket(null);
         session.setStatus(CallSession.Status.QUEUED);
@@ -123,94 +131,62 @@ public class SignalingSessionManager {
 
     private void relay(WebSocketSession sender, String sessionId, String type, JsonNode payload) throws IOException {
         CallSession session = sessions.get(sessionId);
-        if (session == null) return;
+        if (session == null)
+            return;
         WebSocketSession recipient = session.otherParty(sender);
-        if (recipient == null || !recipient.isOpen()) return;
+        if (recipient == null || !recipient.isOpen())
+            return;
         send(recipient, type, sessionId, payload);
     }
 
     private void handleHangup(WebSocketSession sender, String sessionId, JsonNode payload) throws IOException {
         CallSession session = sessions.get(sessionId);
-        if (session == null) return;
+        if (session == null)
+            return;
         endSession(session, sender, payload.path("reason").asText("hangup"));
     }
 
-    private void endSession(
-        CallSession session,
-        WebSocketSession initiator,
-        String reason
-) throws IOException {
+    private void endSession(CallSession session, WebSocketSession initiator, String reason) throws IOException {
+        if (session.getStatus() == CallSession.Status.ENDED || session.getStatus() == CallSession.Status.MISSED) {
+            return;
+        }
 
-    if (
-        session.getStatus() == CallSession.Status.ENDED
-    ) {
-        return;
+        session.setEndedAt(Instant.now());
+        session.setEndReason(reason);
+
+        if (session.getAnsweredAt() == null) {
+            session.setStatus(CallSession.Status.MISSED);
+        } else {
+            session.setStatus(CallSession.Status.ENDED);
+        }
+
+        WebSocketSession other = session.otherParty(initiator);
+        if (other != null && other.isOpen()) {
+            send(other, "hangup", session.getId(), Map.of("reason", reason));
+        }
+
+        completedSessions.add(session);
+        sessions.remove(session.getId());
+
+        System.out.println("[RIMOSSA] sessione " + session.getId() + " (motivo: " + reason
+                + ") | totale sessioni rimanenti: " + sessions.size());
     }
-
-    session.setEndedAt(Instant.now());
-    session.setEndReason(reason);
-
-    if (
-        session.getAnsweredAt() == null
-    ) {
-        session.setStatus(
-                CallSession.Status.MISSED
-        );
-    } else {
-        session.setStatus(
-                CallSession.Status.ENDED
-        );
-    }
-
-    WebSocketSession other =
-            session.otherParty(
-                    initiator
-            );
-
-    if (
-        other != null &&
-        other.isOpen()
-    ) {
-        send(
-                other,
-                "hangup",
-                session.getId(),
-                Map.of(
-                        "reason",
-                        reason
-                )
-        );
-    }
-
-    completedSessions.add(session);
-
-    sessions.remove(
-            session.getId()
-    );
-}
 
     private void send(WebSocketSession recipient, String type, String sessionId, Object payload) throws IOException {
-        if (recipient == null || !recipient.isOpen()) return;
+        if (recipient == null || !recipient.isOpen())
+            return;
         ObjectNode envelope = mapper.createObjectNode();
         envelope.put("type", type);
-        if (sessionId != null) envelope.put("sessionId", sessionId);
+        if (sessionId != null)
+            envelope.put("sessionId", sessionId);
         envelope.set("payload", mapper.valueToTree(payload));
         recipient.sendMessage(new TextMessage(mapper.writeValueAsString(envelope)));
     }
 
     public List<CallSession> getAllSessions() {
-
-    List<CallSession> result =
-            new ArrayList<>();
-
-    result.addAll(
-            sessions.values()
-    );
-
-    result.addAll(
-            completedSessions
-    );
-
-    return result;
-}
+        List<CallSession> result = new ArrayList<>();
+        result.addAll(sessions.values());
+        result.addAll(completedSessions);
+        return result;
+    }
 }
