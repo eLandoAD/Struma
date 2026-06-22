@@ -7,6 +7,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -20,6 +23,7 @@ public class SignalingSessionManager {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final Map<String, CallSession> sessions = new ConcurrentHashMap<>();
+    private final List<CallSession> completedSessions = new ArrayList<>();
     private final Deque<String> waitingCustomers = new ArrayDeque<>();
     private final Deque<WebSocketSession> availableConsultants = new ArrayDeque<>();
     private final Object matchLock = new Object();
@@ -45,8 +49,7 @@ public class SignalingSessionManager {
         synchronized (matchLock) {
             boolean wasAvailable = availableConsultants.remove(socket);
             if (wasAvailable) {
-                System.out
-                        .println("[CONSULENTE RIMOSSO] dal pool disponibili (disconnesso prima di essere accoppiato)");
+                System.out.println("[CONSULENTE RIMOSSO] dal pool disponibili (disconnesso prima di essere accoppiato)");
             }
         }
         for (CallSession session : sessions.values()) {
@@ -106,6 +109,7 @@ public class SignalingSessionManager {
         if (session == null || !consultant.equals(session.getConsultantSocket()))
             return;
 
+        session.setAnsweredAt(Instant.now());
         session.setStatus(CallSession.Status.ACTIVE);
         send(session.getConsultantSocket(), "call_assigned", sessionId, Map.of("role", "caller"));
         send(session.getCustomerSocket(), "call_assigned", sessionId, Map.of("role", "callee"));
@@ -143,15 +147,27 @@ public class SignalingSessionManager {
     }
 
     private void endSession(CallSession session, WebSocketSession initiator, String reason) throws IOException {
-        if (session.getStatus() == CallSession.Status.ENDED)
+        if (session.getStatus() == CallSession.Status.ENDED || session.getStatus() == CallSession.Status.MISSED) {
             return;
-        session.setStatus(CallSession.Status.ENDED);
+        }
+
+        session.setEndedAt(Instant.now());
+        session.setEndReason(reason);
+
+        if (session.getAnsweredAt() == null) {
+            session.setStatus(CallSession.Status.MISSED);
+        } else {
+            session.setStatus(CallSession.Status.ENDED);
+        }
 
         WebSocketSession other = session.otherParty(initiator);
         if (other != null && other.isOpen()) {
             send(other, "hangup", session.getId(), Map.of("reason", reason));
         }
+
+        completedSessions.add(session);
         sessions.remove(session.getId());
+
         System.out.println("[RIMOSSA] sessione " + session.getId() + " (motivo: " + reason
                 + ") | totale sessioni rimanenti: " + sessions.size());
     }
@@ -165,5 +181,12 @@ public class SignalingSessionManager {
             envelope.put("sessionId", sessionId);
         envelope.set("payload", mapper.valueToTree(payload));
         recipient.sendMessage(new TextMessage(mapper.writeValueAsString(envelope)));
+    }
+
+    public List<CallSession> getAllSessions() {
+        List<CallSession> result = new ArrayList<>();
+        result.addAll(sessions.values());
+        result.addAll(completedSessions);
+        return result;
     }
 }
