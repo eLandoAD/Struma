@@ -52,8 +52,8 @@ function AppLayout() {
   const activeItem = location.pathname === "/agent/dashboard" ? "live-stream" : "";
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="flex min-h-screen">
+    <div className="h-screen w-screen bg-slate-50 text-slate-900 overflow-hidden">
+      <div className="flex h-full w-full">
         <Sidebar
           activeItem={activeItem}
           onNavigate={(key) => {
@@ -63,7 +63,7 @@ function AppLayout() {
           }}
           onEndConsultation={() => navigate("/")}
         />
-        <main className="flex-1 p-6 sm:p-8 lg:p-10">
+        <main className="flex-1 overflow-auto">
           <Routes>
             <Route path="/components" element={<ComponentsDemo />} />
 

@@ -38,28 +38,28 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`flex h-full flex-col border-r border-slate-800 bg-slate-950 p-4 transition-all ${
-        collapsed ? "w-16" : "w-56"
+      className={`flex h-full flex-col border-r border-slate-200 bg-white p-4 transition-all ${
+        collapsed ? "w-16" : "w-48"
       }`}
     >
-      {/* Top: collapse toggle + logo mark */}
-      <div className="mb-8 flex items-center justify-between">
+      {/* Top: logo + collapse toggle */}
+      <div className="mb-8 flex items-center justify-between gap-2">
+        {!collapsed && (
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
+            <Video size={20} strokeWidth={2.25} />
+          </span>
+        )}
         <button
           onClick={() => setCollapsed((v) => !v)}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none"
         >
           <PanelLeft size={16} />
         </button>
-        {!collapsed && (
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white">
-            <Video size={16} strokeWidth={2.25} />
-          </span>
-        )}
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 space-y-1">
+      <nav className="flex-1 space-y-0.5">
         {NAV_ITEMS.map((item) => {
           const isActive = item.key === activeItem;
           return (
@@ -68,43 +68,43 @@ export default function Sidebar({
               disabled={!item.enabled}
               onClick={() => item.enabled && onNavigate(item.key)}
               title={collapsed ? item.label : undefined}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 isActive
-                  ? "bg-blue-500/10 text-blue-400"
+                  ? "bg-blue-50 text-blue-600"
                   : item.enabled
-                  ? "text-slate-300 hover:bg-slate-800 hover:text-white"
-                  : "cursor-not-allowed text-slate-600"
+                  ? "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  : "cursor-not-allowed text-slate-400"
               }`}
             >
-              <item.icon size={16} className="shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
+              <item.icon size={18} className="shrink-0" />
+              {!collapsed && <span className="truncate">{item.label}</span>}
             </button>
           );
         })}
       </nav>
 
-      {/* Support, pinned above the secure-session card */}
+      {/* Support button */}
       <button
         onClick={() => onNavigate("support")}
         title={collapsed ? "Support" : undefined}
-        className="mb-4 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        className="mb-4 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all"
       >
-        <LifeBuoy size={16} className="shrink-0" />
-        {!collapsed && <span>Support</span>}
+        <LifeBuoy size={18} className="shrink-0" />
+        {!collapsed && <span className="truncate">Support</span>}
       </button>
 
       {/* Secure session card + End Consultation */}
       {!collapsed && (
-        <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-          <div className="flex items-center gap-1.5 text-sm font-medium text-slate-100">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            Secure Session
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-sm font-semibold text-slate-900">Secure Session</span>
           </div>
-          <p className="mt-0.5 text-xs text-slate-400">{encryptionLabel}</p>
+          <p className="mb-3 text-xs text-slate-500">{encryptionLabel}</p>
 
           <button
             onClick={onEndConsultation}
-            className="mt-3 w-full rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+            className="w-full rounded-lg bg-red-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800"
           >
             End Consultation
           </button>
