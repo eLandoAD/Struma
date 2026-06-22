@@ -1,62 +1,71 @@
 <!DOCTYPE html>
 <html lang="it">
-<head><meta charset="UTF-8"><title>Customer - solo ricezione</title></head>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Customer - solo ricezione</title>
+</head>
+
 <body>
-<h1>Customer (solo ricezione video)</h1>
-<video id="remoteVideo" autoplay playsinline width="400" style="border:2px solid red; background:#333;"></video>
-<pre id="log"></pre>
-<script>
-const log = (msg) => { document.getElementById('log').textContent += msg + "\n"; console.log(msg); };
-const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/signal';
-const ws = new WebSocket(wsUrl);
-let pc, currentSessionId;
+  <h1>Customer (solo ricezione video)</h1>
+  <video id="remoteVideo" autoplay playsinline width="400" style="border:2px solid red; background:#333;"></video>
+  <pre id="log"></pre>
+  <script>
+    const log = (msg) => { document.getElementById('log').textContent += msg + "\n"; console.log(msg); };
+    const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/signal';
+    const ws = new WebSocket(wsUrl);
+    let pc, currentSessionId;
 
-function send(type, payload) {
-  ws.send(JSON.stringify({ type, sessionId: currentSessionId, payload: payload || {} }));
-}
+    function send(type, payload) {
+      ws.send(JSON.stringify({ type, sessionId: currentSessionId, payload: payload || {} }));
+    }
 
-function createPeerConnection() {
-  pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-  pc.addTransceiver('video', { direction: 'recvonly' });
-  pc.ontrack = (e) => {
-    log('track ricevuta: ' + e.track.kind);
-    document.getElementById('remoteVideo').srcObject = e.streams[0];
-  };
-  pc.onicecandidate = (e) => { if (e.candidate) send('ice_candidate', { candidate: e.candidate }); };
-  pc.onconnectionstatechange = () => log('stato connessione: ' + pc.connectionState);
-}
+    function createPeerConnection() {
+      pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.ontrack = (e) => {
+        log('track ricevuta: ' + e.track.kind);
+        document.getElementById('remoteVideo').srcObject = e.streams[0];
+      };
+      pc.onicecandidate = (e) => { if (e.candidate) send('ice_candidate', { candidate: e.candidate }); };
+      pc.onconnectionstatechange = () => log('stato connessione: ' + pc.connectionState);
+    }
 
-ws.onopen = () => {
-  log('connesso al server, mi metto in coda');
-  ws.send(JSON.stringify({ type: 'join_queue', payload: { sourcePage: 'test-page' } }));
-};
+    ws.onopen = () => {
+      log('connesso al server, mi metto in coda');
+      ws.send(JSON.stringify({ type: 'join_queue', payload: { sourcePage: 'test-page' } }));
+    };
 
-ws.onmessage = async (event) => {
-  const msg = JSON.parse(event.data);
-  log('ricevuto: ' + msg.type);
+    ws.onmessage = async (event) => {
+      const msg = JSON.parse(event.data);
+      log('ricevuto: ' + msg.type);
 
-  if (msg.type === 'queued') {
-    currentSessionId = msg.sessionId;
-    log('in coda con sessionId: ' + currentSessionId);
-  } else if (msg.type === 'call_assigned') {
-    log('consulente assegnato, in attesa della offer...');
-  } else if (msg.type === 'offer') {
-    createPeerConnection();
-    await pc.setRemoteDescription(new RTCSessionDescription(msg.payload.sdp));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    send('answer', { sdp: answer });
-    log('answer inviata');
-  } else if (msg.type === 'ice_candidate') {
-    try { await pc.addIceCandidate(new RTCIceCandidate(msg.payload.candidate)); }
-    catch (e) { log('errore ICE candidate: ' + e); }
-  } else if (msg.type === 'hangup') {
-    log("chiamata terminata dall'altra parte");
-    if (pc) pc.close();
-  }
-};
+      if (msg.type === 'queued') {
+        currentSessionId = msg.sessionId;
+        log('in coda con sessionId: ' + currentSessionId);
+      } else if (msg.type === 'call_assigned') {
+        log('consulente assegnato, in attesa della offer...');
+      } else if (msg.type === 'offer') {
+        createPeerConnection();
+        await pc.setRemoteDescription(new RTCSessionDescription(msg.payload.sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        send('answer', { sdp: answer });
+        log('answer inviata');
+      } else if (msg.type === 'ice_candidate') {
+        try { await pc.addIceCandidate(new RTCIceCandidate(msg.payload.candidate)); }
+        catch (e) { log('errore ICE candidate: ' + e); }
+      } else if (msg.type === 'hangup') {
+        log("chiamata terminata dall'altra parte");
+        if (pc) pc.close();
+      } else if (msg.type === 'missed') {
+        log('NESSUN CONSULENTE DISPONIBILE — qui andrebbe mostrato il form di contatto fallback');
+        if (pc) pc.close();
+      }
+    };
 
-ws.onerror = (e) => log('errore websocket: ' + e);
-</script>
+    ws.onerror = (e) => log('errore websocket: ' + e);
+  </script>
 </body>
+
 </html>
