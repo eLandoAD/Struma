@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Customer - solo ricezione</title>
+</head>
+<body>
+<h1>Customer (solo ricezione video)</h1>
+<video id="remoteVideo" autoplay playsinline width="400"></video>
+<pre id="log"></pre>
+
+<script>
+const log = (msg) => {
+  document.getElementById('log').textContent += msg + "\n";
+  console.log(msg);
+};
+
+const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/signal';
+
+const ws = new WebSocket(wsUrl);
+let pc;
+
+function send(obj) {
+  ws.send(JSON.stringify(obj));
+}
+
+function createPeerConnection() {
+  pc = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  });
+
+  // ⚠️ QUESTA è la riga che applica la regola one-way:
+  // nessun getUserMedia, nessuna track da aggiungere.
+  // Diciamo esplicitamente alla peer connection: voglio solo ricevere video.
+  pc.addTransceiver('video', { direction: 'recvonly' });
+
+  pc.ontrack = (event) => {
+    log('track ricevuta: ' + event.track.kind);
+    document.getElementById('remoteVideo').srcObject = event.streams[0];
+  };
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      send({ type: 'ice_candidate', candidate: event.candidate });
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    log('stato connessione: ' + pc.connectionState);
+  };
+}
+
+ws.onopen = () => log('connesso al server, in attesa della offer...');
+ws.onerror = (e) => log('errore websocket: ' + e);
+
+ws.onmessage = async (event) => {
+  const msg = JSON.parse(event.data);
+
+  if (msg.type === 'offer') {
+    createPeerConnection();
+    await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    send({ type: 'answer', sdp: answer });
+    log('answer inviata');
+  } else if (msg.type === 'ice_candidate') {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+    } catch (e) {
+      log('errore ICE candidate: ' + e);
+    }
+  }
+};
+</script>
+</body>
+</html>
