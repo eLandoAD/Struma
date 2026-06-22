@@ -53,18 +53,20 @@ function AppLayout() {
   const activeItem = location.pathname === "/agent/dashboard" ? "live-stream" : "";
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 overflow-hidden">
-      <Navbar />
-      <div className="flex h-full w-full overflow-hidden">
-        <Sidebar
-          activeItem={activeItem}
-          onNavigate={(key) => {
-            if (key === "live-stream" || key === "support") {
-              navigate("/agent/dashboard");
-            }
-          }}
-          onEndConsultation={() => navigate("/")}
-        />
+    <div className="flex h-screen w-screen bg-slate-50 text-slate-900 overflow-hidden">
+      {/* Sidebar - full height on left */}
+      <Sidebar
+        activeItem={activeItem}
+        onNavigate={(key) => {
+          if (key === "live-stream" || key === "support") {
+            navigate("/agent/dashboard");
+          }
+        }}
+        onEndConsultation={() => navigate("/")}
+      />
+      {/* Right side - navbar + main */}
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <Navbar />
         <main className="flex-1 overflow-auto">
           <Routes>
             <Route path="/components" element={<ComponentsDemo />} />
