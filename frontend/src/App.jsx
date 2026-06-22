@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from "re
 import { AgentAuthProvider } from "./context/AgentAuthContext";
 import { ProtectedAgentRoute } from "./components/ProtectedAgentRoute";
 import Sidebar from "./components/Sidebar";
+import Navbar from "./components/Navbar";
 import { Button } from "./components/Button";
 import { Logo } from "./components/Logo";
 import { StatusToggle } from "./components/StatusToggle";
@@ -52,8 +53,9 @@ function AppLayout() {
   const activeItem = location.pathname === "/agent/dashboard" ? "live-stream" : "";
 
   return (
-    <div className="h-screen w-screen bg-slate-50 text-slate-900 overflow-hidden">
-      <div className="flex h-full w-full">
+    <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 overflow-hidden">
+      <Navbar />
+      <div className="flex h-full w-full overflow-hidden">
         <Sidebar
           activeItem={activeItem}
           onNavigate={(key) => {
