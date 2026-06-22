@@ -9,10 +9,16 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 @EnableWebSocket
 public class WebSocketConfig implements WebSocketConfigurer {
 
+    private final SignalingSessionManager sessionManager;
+
+    public WebSocketConfig(SignalingSessionManager sessionManager) {
+        this.sessionManager = sessionManager;
+    }
+
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry
-            .addHandler(new EchoWebSocketHandler(), "/ws/signal")
+            .addHandler(new SignalingWebSocketHandler(sessionManager), "/ws/signal")
             .setAllowedOrigins("*"); // da restringere più avanti, ok per il dev locale
     }
 }
