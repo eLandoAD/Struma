@@ -7,6 +7,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -20,6 +23,7 @@ public class SignalingSessionManager {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final Map<String, CallSession> sessions = new ConcurrentHashMap<>();
+    private final List<CallSession> completedSessions = new ArrayList<>();
     private final Deque<String> waitingCustomers = new ArrayDeque<>();
     private final Deque<WebSocketSession> availableConsultants = new ArrayDeque<>();
     private final Object matchLock = new Object();
@@ -98,6 +102,7 @@ public class SignalingSessionManager {
         CallSession session = sessions.get(sessionId);
         if (session == null || !consultant.equals(session.getConsultantSocket())) return;
 
+        session.setAnsweredAt(Instant.now());
         session.setStatus(CallSession.Status.ACTIVE);
         send(session.getConsultantSocket(), "call_assigned", sessionId, Map.of("role", "caller"));
         send(session.getCustomerSocket(), "call_assigned", sessionId, Map.of("role", "callee"));
@@ -130,16 +135,59 @@ public class SignalingSessionManager {
         endSession(session, sender, payload.path("reason").asText("hangup"));
     }
 
-    private void endSession(CallSession session, WebSocketSession initiator, String reason) throws IOException {
-        if (session.getStatus() == CallSession.Status.ENDED) return;
-        session.setStatus(CallSession.Status.ENDED);
+    private void endSession(
+        CallSession session,
+        WebSocketSession initiator,
+        String reason
+) throws IOException {
 
-        WebSocketSession other = session.otherParty(initiator);
-        if (other != null && other.isOpen()) {
-            send(other, "hangup", session.getId(), Map.of("reason", reason));
-        }
-        sessions.remove(session.getId());
+    if (
+        session.getStatus() == CallSession.Status.ENDED
+    ) {
+        return;
     }
+
+    session.setEndedAt(Instant.now());
+    session.setEndReason(reason);
+
+    if (
+        session.getAnsweredAt() == null
+    ) {
+        session.setStatus(
+                CallSession.Status.MISSED
+        );
+    } else {
+        session.setStatus(
+                CallSession.Status.ENDED
+        );
+    }
+
+    WebSocketSession other =
+            session.otherParty(
+                    initiator
+            );
+
+    if (
+        other != null &&
+        other.isOpen()
+    ) {
+        send(
+                other,
+                "hangup",
+                session.getId(),
+                Map.of(
+                        "reason",
+                        reason
+                )
+        );
+    }
+
+    completedSessions.add(session);
+
+    sessions.remove(
+            session.getId()
+    );
+}
 
     private void send(WebSocketSession recipient, String type, String sessionId, Object payload) throws IOException {
         if (recipient == null || !recipient.isOpen()) return;
@@ -149,4 +197,20 @@ public class SignalingSessionManager {
         envelope.set("payload", mapper.valueToTree(payload));
         recipient.sendMessage(new TextMessage(mapper.writeValueAsString(envelope)));
     }
+
+    public List<CallSession> getAllSessions() {
+
+    List<CallSession> result =
+            new ArrayList<>();
+
+    result.addAll(
+            sessions.values()
+    );
+
+    result.addAll(
+            completedSessions
+    );
+
+    return result;
+}
 }

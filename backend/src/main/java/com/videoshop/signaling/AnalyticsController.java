@@ -82,21 +82,68 @@ public class AnalyticsController {
     }
 
     @GetMapping("/speed-of-answer")
-    public Map<String, Double> speedOfAnswer() {
+public Map<String, Double> speedOfAnswer() {
 
-        Double average =
-                manager.getAllSessions()
-                        .stream()
-                        .filter(s -> s.getAnsweredAt() != null)
-                        .mapToLong(CallSession::getSpeedOfAnswerSeconds)
-                        .average()
-                        .orElse(0);
+    List<Long> values =
+            manager.getAllSessions()
+                    .stream()
+                    .filter(
+                            s ->
+                                    s.getAnsweredAt()
+                                            != null
+                    )
+                    .map(
+                            CallSession::getSpeedOfAnswerSeconds
+                    )
+                    .sorted()
+                    .toList();
 
-        return Map.of(
-                "average",
-                average
-        );
+    double average =
+            values.stream()
+                    .mapToLong(
+                            Long::longValue
+                    )
+                    .average()
+                    .orElse(0);
+
+    double median = 0;
+
+    if (!values.isEmpty()) {
+
+        int middle =
+                values.size() / 2;
+
+        if (
+            values.size() % 2 == 0
+        ) {
+
+            median =
+                    (
+                        values.get(
+                                middle - 1
+                        )
+                        +
+                        values.get(
+                                middle
+                        )
+                    ) / 2.0;
+
+        } else {
+
+            median =
+                    values.get(
+                            middle
+                    );
+        }
     }
+
+    return Map.of(
+            "average",
+            average,
+            "median",
+            median
+    );
+}
 
     @GetMapping("/export")
     public ResponseEntity<String> exportCsv() {
