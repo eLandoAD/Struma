@@ -5,6 +5,7 @@ export default function WaitingRoom() {
   const { connected, send, on } = useSignaling();
   const [sessionId, setSessionId] = useState(null);
   const [status, setStatus] = useState("idle"); // idle | queued | assigned | missed
+  const [micError, setMicError] = useState(null);
   const videoRef = useRef(null);
   const pcRef = useRef(null);
 
@@ -30,7 +31,7 @@ export default function WaitingRoom() {
       });
       pcRef.current = pc;
 
-      // Regola one-way: nessun getUserMedia qui, solo recvonly.
+      // Regola one-way: nessun getUserMedia per il VIDEO, solo recvonly.
       pc.addTransceiver("video", { direction: "recvonly" });
 
       pc.ontrack = (event) => {
@@ -44,6 +45,24 @@ export default function WaitingRoom() {
           send("ice_candidate", sid, { candidate: event.candidate });
         }
       };
+
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "failed") {
+          setStatus("connection_failed");
+        }
+      };
+
+      // Audio è two-way (ARCHITECTURE.md sezione 5): il customer pubblica
+      // il proprio microfono qui, prima di creare l'answer.
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioStream.getAudioTracks().forEach((track) => pc.addTrack(track, audioStream));
+      } catch (err) {
+        // Permesso negato o nessun microfono disponibile: non blocchiamo la
+        // chiamata, il customer resta semplicemente senza audio in uscita.
+        console.warn("Microfono non disponibile:", err.name, err.message);
+        setMicError(err.name);
+      }
 
       await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
       const answer = await pc.createAnswer();
@@ -103,24 +122,34 @@ export default function WaitingRoom() {
       )}
 
       {status === "assigned" && (
-        <p className="mt-4 text-[var(--color-text-dim)]">Consulente assegnato — chiamata in corso.</p>
+        <div className="mt-4">
+          <p className="mb-4 text-[var(--color-text-dim)]">Consulente assegnato — chiamata in corso.</p>
+          {micError && (
+            <p className="mb-2 text-sm text-amber-600">
+              Microfono non disponibile ({micError}) — la chiamata continua senza il tuo audio.
+            </p>
+          )}
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            width={480}
+            style={{
+              display: status === "assigned" ? "block" : "none",
+              margin: "16px auto 0",
+              border: "2px solid #2563eb",
+              background: "#000",
+              borderRadius: "8px",
+            }}
+          />
+        </div>
       )}
 
-      {/* Sempre nel DOM, mai condizionale: il ref deve esistere
-          prima che arrivi il track, indipendentemente dallo stato. */}
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        width={480}
-        style={{
-          display: status === "assigned" ? "block" : "none",
-          margin: "16px auto 0",
-          border: "2px solid #2563eb",
-          background: "#000",
-          borderRadius: "8px",
-        }}
-      />
+      {status === "connection_failed" && (
+        <p className="mt-4 text-red-500">
+          La connessione è stata persa. Riprova più tardi o contattaci tramite il modulo di assistenza.
+        </p>
+      )}
     </div>
   );
 }
