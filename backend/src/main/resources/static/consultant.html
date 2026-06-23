@@ -54,8 +54,13 @@
       document.getElementById('localVideo').srcObject = localStream;
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
 
+      pc.ontrack = (event) => {
+        console.log("Consultant ha ricevuto track:", event.track.kind);
+      };
+
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      console.log("Senders del consultant:", pc.getSenders().map(s => s.track?.kind));
       send('offer', { sdp: offer });
       log('offer inviata per sessione ' + currentSessionId);
     }

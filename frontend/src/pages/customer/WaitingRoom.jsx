@@ -35,6 +35,7 @@ export default function WaitingRoom() {
       pc.addTransceiver("video", { direction: "recvonly" });
 
       pc.ontrack = (event) => {
+        console.log("Customer ha ricevuto track:", event.track.kind);
         if (videoRef.current) {
           videoRef.current.srcObject = event.streams[0];
         }
@@ -67,6 +68,7 @@ export default function WaitingRoom() {
       await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+      console.log("Senders del customer:", pc.getSenders().map(s => s.track?.kind));
       send("answer", sid, { sdp: answer });
     });
 
