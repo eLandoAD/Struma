@@ -1,13 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect } from "react"; 
 
-export default function CallView() {
-  const [messages, setMessages] = useState([]);
-  const [chatText, setChatText] = useState("");
+export default function CallView() { 
+  const [messages, setMessages] = useState([]); 
+  const [chatText, setChatText] = useState(""); 
 
-  return (
-    <div className="p-8 text-center">
-      <h1 className="text-3xl font-bold">Call View</h1>
-      <p className="mt-4 text-[var(--color-text-dim)]">Customer call view placeholder.</p>
-    </div>
-  );
+  return ( 
+    <div className="p-8 text-center"> 
+      <h1 className="text-3xl font-bold">Call View</h1> 
+      <p className="mt-4 text-[var(--color-text-dim)]">Customer call view placeholder.</p> 
+    </div> 
+  ); 
 }
