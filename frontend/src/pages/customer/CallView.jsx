@@ -6,3 +6,5 @@ export default function CallView() {
     </div>
   );
 }
+const [messages, setMessages] = useState([]);
+const [chatText, setChatText] = useState("");
