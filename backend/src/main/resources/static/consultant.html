@@ -20,60 +20,53 @@
       ws.send(JSON.stringify({ type, sessionId: currentSessionId, payload: payload || {} }));
     }
 
-    function createFakeVideoStream() {
+    // Genera un video track sintetico via canvas. Non passa da getUserMedia,
+    // quindi bypassa qualunque problema di camera/policy/driver sull'ambiente
+    // di sviluppo. Va benissimo per provare che la negoziazione WebRTC funziona;
+    // non è la webcam vera, ma a RTCPeerConnection non importa la differenza.
+    function createFakeVideoTrack() {
       const canvas = document.createElement('canvas');
-      canvas.width = 320;
-      canvas.height = 240;
+      canvas.width = 640;
+      canvas.height = 480;
       const ctx = canvas.getContext('2d');
-
-      function draw() {
-        const t = Date.now() / 1000;
-        ctx.fillStyle = `hsl(${(t * 40) % 360}, 70%, 50%)`;
+      let hue = 0;
+      setInterval(() => {
+        hue = (hue + 2) % 360;
+        ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = 'white';
         ctx.font = '24px sans-serif';
-        ctx.fillText('Consultant (finto)', 20, 120);
-        ctx.fillText(new Date().toLocaleTimeString(), 20, 160);
-        requestAnimationFrame(draw);
-      }
-      draw();
-
-      return canvas.captureStream(30);
-    }
-
-    function createFakeVideoStream() {
-      const canvas = document.createElement('canvas');
-      canvas.width = 320;
-      canvas.height = 240;
-      const ctx = canvas.getContext('2d');
-
-      function draw() {
-        const t = Date.now() / 1000;
-        ctx.fillStyle = `hsl(${(t * 40) % 360}, 70%, 50%)`;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = 'white';
-        ctx.font = '24px sans-serif';
-        ctx.fillText('Consultant (finto)', 20, 120);
-        ctx.fillText(new Date().toLocaleTimeString(), 20, 160);
-        requestAnimationFrame(draw);
-      }
-      draw();
-
-      return canvas.captureStream(30);
+        ctx.fillText(new Date().toLocaleTimeString(), 20, 40);
+      }, 100);
+      return canvas.captureStream(30).getVideoTracks()[0];
     }
 
     async function startCall() {
       pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
       pc.onicecandidate = (e) => { if (e.candidate) send('ice_candidate', { candidate: e.candidate }); };
       pc.onconnectionstatechange = () => log('stato connessione: ' + pc.connectionState);
-      const stream = createFakeVideoStream();
-      document.getElementById('localVideo').srcObject = stream;
-      stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+      // Audio vero (funziona sull'ambiente attuale), video finto via canvas.
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const videoTrack = createFakeVideoTrack();
+      const localStream = new MediaStream([videoTrack, ...audioStream.getAudioTracks()]);
+
+      document.getElementById('localVideo').srcObject = localStream;
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       send('offer', { sdp: offer });
       log('offer inviata per sessione ' + currentSessionId);
     }
+
+    // Lista delle sessioni attualmente "in attesa di una mia risposta" — per
+    // ora serve solo a far capire dal log quale sessionId stiamo trattando,
+    // così se ne arrivano più in sequenza non ci si confonde su quale sia
+    // stata cancellata. Quando questa pagina diventerà una vera lista visuale
+    // (o quando si collega questa logica al componente React), è qui che si
+    // deve rimuovere la card corrispondente.
+    const pendingIncoming = new Set();
 
     ws.onopen = () => {
       log('connesso al server, mi dichiaro disponibile');
@@ -86,8 +79,18 @@
 
       if (msg.type === 'incoming_customer') {
         currentSessionId = msg.sessionId;
+        pendingIncoming.add(msg.sessionId);
         log('customer in arrivo (' + msg.payload.sourcePage + ') — rispondo automaticamente (test)');
         send('answer_customer');
+      } else if (msg.type === 'incoming_customer_cancelled') {
+        // Il cliente che ci era stato proposto è stato rimesso in coda e
+        // riassegnato a un altro consulente perché non abbiamo risposto in
+        // tempo. Non è un hangup di una chiamata reale: non esiste nessuna
+        // RTCPeerConnection da chiudere, va solo tolta la notifica dalla UI.
+        pendingIncoming.delete(msg.sessionId);
+        log('la richiesta ' + msg.sessionId + ' non è più assegnata a me (timeout di risposta) — rimossa dalla lista');
+        // TODO quando questa pagina avrà una vera lista di card:
+        // removeIncomingCard(msg.sessionId);
       } else if (msg.type === 'call_assigned' && msg.payload.role === 'caller') {
         try {
           await startCall();
