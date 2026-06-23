@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useSignaling } from "../hooks/useSignaling";
 import {
   Bell,
   HelpCircle,
@@ -18,6 +19,7 @@ export default function Navbar() {
   const [availability, setAvailability] = useState("Online");
   const location = useLocation();
   const navigate = useNavigate();
+  const { send } = useSignaling();
 
   return (
     <header className="sticky top-0 z-20 border-b border-blue-100 bg-white w-full">
@@ -33,7 +35,7 @@ export default function Navbar() {
             </div>
             <span className="text-sm font-semibold text-blue-600 border-l border-blue-100 pl-4">Console</span>
           </div>
-          
+
           {/* Navigation Tabs */}
           <nav className="flex items-center gap-2 border-l border-blue-100 pl-8">
             {NAV_ITEMS.map((item) => {
@@ -43,13 +45,12 @@ export default function Navbar() {
                   key={item.label}
                   disabled={!item.enabled}
                   onClick={() => item.enabled && navigate(item.to)}
-                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-                    isActive
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${isActive
                       ? "bg-blue-100 text-blue-700"
                       : item.enabled
-                      ? "text-slate-700 hover:bg-blue-100 hover:text-blue-700"
-                      : "text-slate-400 cursor-not-allowed"
-                  }`}
+                        ? "text-slate-700 hover:bg-blue-100 hover:text-blue-700"
+                        : "text-slate-400 cursor-not-allowed"
+                    }`}
                 >
                   {item.label}
                 </button>
@@ -66,12 +67,16 @@ export default function Navbar() {
               <button
                 key={option}
                 type="button"
-                onClick={() => setAvailability(option)}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                  availability === option
+                onClick={() => {
+                  setAvailability(option);
+                  if (option === "Online") {
+                    send("consultant_available", null, {});
+                  }
+                }}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${availability === option
                     ? "bg-blue-600 text-white"
                     : "text-slate-600 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 {option}
               </button>
