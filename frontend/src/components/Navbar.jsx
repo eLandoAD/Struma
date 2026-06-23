@@ -1,12 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useSignaling } from "../hooks/useSignaling";
-import {
-  Bell,
-  HelpCircle,
-  User,
-  Video,
-} from "lucide-react";
+import { Bell, HelpCircle, User } from "lucide-react";
 import LoginModal from "./LoginModal";
 import { useAgentAuth } from "../context/AgentAuthContext";
 
@@ -32,22 +27,13 @@ export default function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-20 border-b border-blue-100 bg-white w-full">
-      <div className="flex h-16 items-center justify-between px-6 gap-8">
-        {/* Left - Logo + Lumina + Console */}
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
-            <Video size={20} strokeWidth={2.25} />
-          </span>
-          <div className="flex items-center gap-4">
-            <div>
-              <p className="text-sm font-bold text-blue-600">Lumina</p>
-            </div>
-            <span className="text-sm font-semibold text-blue-600 border-l border-blue-100 pl-4">Console</span>
-          </div>
+    <header className="sticky top-0 z-20 border-b border-indigo-100 bg-white w-full">
+      <div className="flex h-12 items-center justify-between px-5 gap-6">
+        {/* Left - Console + Nav Tabs */}
+        <div className="flex items-center gap-6">
+          <span className="text-sm font-bold text-blue-600">Console</span>
 
-          {/* Navigation Tabs */}
-          <nav className="flex items-center gap-2 border-l border-blue-100 pl-8">
+          <nav className="flex items-center gap-5">
             {NAV_ITEMS.map((item) => {
               const isActive = location.pathname === item.to;
               return (
@@ -55,12 +41,13 @@ export default function Navbar() {
                   key={item.label}
                   disabled={!item.enabled}
                   onClick={() => item.enabled && navigate(item.to)}
-                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${isActive
-                      ? "bg-blue-100 text-blue-700"
+                  className={`text-xs font-medium pb-1 border-b-2 transition-all ${
+                    isActive
+                      ? "border-blue-600 text-blue-600 font-semibold"
                       : item.enabled
-                        ? "text-slate-700 hover:bg-blue-100 hover:text-blue-700"
-                        : "text-slate-400 cursor-not-allowed"
-                    }`}
+                      ? "border-transparent text-slate-700 hover:text-slate-900"
+                      : "border-transparent text-slate-400 cursor-not-allowed"
+                  }`}
                 >
                   {item.label}
                 </button>
@@ -70,10 +57,10 @@ export default function Navbar() {
         </div>
 
         {/* Right - Status, Icons */}
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3">
           {/* Status Toggle */}
-          <div className="flex items-center gap-2 rounded-full bg-slate-100 p-1">
-            {['Online', 'Busy', 'Offline'].map((option) => (
+          <div className="flex items-center gap-0.5 rounded-md bg-slate-100 p-0.5">
+            {["Online", "Busy", "Offline"].map((option) => (
               <button
                 key={option}
                 type="button"
@@ -83,10 +70,11 @@ export default function Navbar() {
                     send("consultant_available", null, {});
                   }
                 }}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${availability === option
+                className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
+                  availability === option
                     ? "bg-blue-600 text-white"
                     : "text-slate-600 hover:text-slate-900"
-                  }`}
+                }`}
               >
                 {option}
               </button>
@@ -96,27 +84,27 @@ export default function Navbar() {
           {/* Icons */}
           <button
             type="button"
-            className="text-slate-600 hover:text-slate-900 transition"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition"
             title="Notifications"
           >
-            <Bell size={20} />
+            <Bell size={15} />
           </button>
 
           <button
             type="button"
-            className="text-slate-600 hover:text-slate-900 transition"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition"
             title="Help"
           >
-            <HelpCircle size={20} />
+            <HelpCircle size={15} />
           </button>
 
           <button
             type="button"
             onClick={() => setShowLogin(true)}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-300 text-white hover:bg-slate-400 transition"
+            className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-300 text-white ring-2 ring-white hover:bg-slate-400 transition"
             title="Profile"
           >
-            <User size={16} />
+            <User size={14} />
           </button>
         </div>
       </div>
