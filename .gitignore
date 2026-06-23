@@ -1,6 +1,6 @@
 # Maven build output
 target/
-backend/data/
+backend/data
 
 # Node / frontend (quando arriva)
 node_modules/
