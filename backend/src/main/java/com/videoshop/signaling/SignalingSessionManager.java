@@ -49,7 +49,8 @@ public class SignalingSessionManager {
         synchronized (matchLock) {
             boolean wasAvailable = availableConsultants.remove(socket);
             if (wasAvailable) {
-                System.out.println("[CONSULENTE RIMOSSO] dal pool disponibili (disconnesso prima di essere accoppiato)");
+                System.out
+                        .println("[CONSULENTE RIMOSSO] dal pool disponibili (disconnesso prima di essere accoppiato)");
             }
         }
         for (CallSession session : sessions.values()) {
@@ -100,7 +101,9 @@ public class SignalingSessionManager {
             session.setConsultantSocket(consultant);
             session.setStatus(CallSession.Status.RINGING);
 
-            send(consultant, "incoming_customer", sessionId, Map.of("sourcePage", session.getSourcePage()));
+            send(consultant, "incoming_customer", sessionId, Map.of(
+                    "sourcePage", session.getSourcePage(),
+                    "waitingSince", session.getQueuedAt().toEpochMilli()));
         }
     }
 
