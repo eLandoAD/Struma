@@ -7,18 +7,24 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.ArrayList;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 @Component
 public class SignalingSessionManager {
+
+    private static final long QUEUE_TIMEOUT_SECONDS = 30;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -27,6 +33,14 @@ public class SignalingSessionManager {
     private final Deque<String> waitingCustomers = new ArrayDeque<>();
     private final Deque<WebSocketSession> availableConsultants = new ArrayDeque<>();
     private final Object matchLock = new Object();
+    private final CallSessionRepository repository;
+
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private final Map<String, ScheduledFuture<?>> timeoutTasks = new ConcurrentHashMap<>();
+
+    public SignalingSessionManager(CallSessionRepository repository) {
+        this.repository = repository;
+    }
 
     public void handleMessage(WebSocketSession sender, String rawJson) throws IOException {
         JsonNode root = mapper.readTree(rawJson);
@@ -67,13 +81,56 @@ public class SignalingSessionManager {
         String sessionId = UUID.randomUUID().toString();
         CallSession session = new CallSession(sessionId, sourcePage, customer);
         sessions.put(sessionId, session);
+        repository.save(new CallSessionEntity(sessionId, "QUEUED", sourcePage, Instant.now()));
         System.out.println("[CREATA] sessione " + sessionId + " | totale sessioni attive: " + sessions.size());
 
         send(customer, "queued", sessionId, Map.of("sourcePage", sourcePage));
 
+        scheduleTimeout(sessionId);
+
         synchronized (matchLock) {
             waitingCustomers.addLast(sessionId);
             tryMatch();
+        }
+    }
+
+    private void scheduleTimeout(String sessionId) {
+        ScheduledFuture<?> future = scheduler.schedule(
+                () -> handleTimeout(sessionId),
+                QUEUE_TIMEOUT_SECONDS,
+                TimeUnit.SECONDS);
+        timeoutTasks.put(sessionId, future);
+    }
+
+    private void cancelTimeout(String sessionId) {
+        ScheduledFuture<?> future = timeoutTasks.remove(sessionId);
+        if (future != null) {
+            future.cancel(false);
+        }
+    }
+
+    private void handleTimeout(String sessionId) {
+        synchronized (matchLock) {
+            timeoutTasks.remove(sessionId);
+            CallSession session = sessions.get(sessionId);
+            if (session == null) return;
+
+            CallSession.Status status = session.getStatus();
+            if (status == CallSession.Status.ACTIVE
+                || status == CallSession.Status.ENDED
+                || status == CallSession.Status.MISSED) {
+                return;
+            }
+
+            waitingCustomers.remove(sessionId);
+
+            try {
+                endSession(session, null, "timeout");
+            } catch (IOException e) {
+                System.out.println("[TIMEOUT] errore nella chiusura sessione: " + e.getMessage());
+            }
+
+            System.out.println("[TIMEOUT] sessione " + sessionId + " -> MISSED (nessuna risposta entro " + QUEUE_TIMEOUT_SECONDS + "s)");
         }
     }
 
@@ -84,7 +141,6 @@ public class SignalingSessionManager {
         }
     }
 
-    /** Va chiamato sempre dentro matchLock. */
     private void tryMatch() throws IOException {
         while (!waitingCustomers.isEmpty() && !availableConsultants.isEmpty()) {
             String sessionId = waitingCustomers.pollFirst();
@@ -112,8 +168,17 @@ public class SignalingSessionManager {
         if (session == null || !consultant.equals(session.getConsultantSocket()))
             return;
 
+        cancelTimeout(sessionId);
+
         session.setAnsweredAt(Instant.now());
         session.setStatus(CallSession.Status.ACTIVE);
+
+        repository.findById(sessionId).ifPresent(entity -> {
+            entity.setStatus("ACTIVE");
+            entity.setAnsweredAt(Instant.now());
+            repository.save(entity);
+        });
+
         send(session.getConsultantSocket(), "call_assigned", sessionId, Map.of("role", "caller"));
         send(session.getCustomerSocket(), "call_assigned", sessionId, Map.of("role", "callee"));
     }
@@ -154,25 +219,42 @@ public class SignalingSessionManager {
             return;
         }
 
+        cancelTimeout(session.getId());
         session.setEndedAt(Instant.now());
         session.setEndReason(reason);
 
-        if (session.getAnsweredAt() == null) {
-            session.setStatus(CallSession.Status.MISSED);
-        } else {
-            session.setStatus(CallSession.Status.ENDED);
-        }
+        boolean wasNeverAnswered = session.getAnsweredAt() == null;
+        CallSession.Status finalStatus = wasNeverAnswered ? CallSession.Status.MISSED : CallSession.Status.ENDED;
+        session.setStatus(finalStatus);
 
-        WebSocketSession other = session.otherParty(initiator);
-        if (other != null && other.isOpen()) {
-            send(other, "hangup", session.getId(), Map.of("reason", reason));
+        repository.findById(session.getId()).ifPresent(entity -> {
+            entity.setStatus(finalStatus.name());
+            entity.setEndedAt(Instant.now());
+            entity.setEndReason(reason);
+            repository.save(entity);
+        });
+
+        if (wasNeverAnswered) {
+            if (session.getCustomerSocket() != null && session.getCustomerSocket().isOpen()
+                    && !session.getCustomerSocket().equals(initiator)) {
+                send(session.getCustomerSocket(), "missed", session.getId(), Map.of());
+            }
+            if (session.getConsultantSocket() != null && session.getConsultantSocket().isOpen()
+                    && !session.getConsultantSocket().equals(initiator)) {
+                send(session.getConsultantSocket(), "hangup", session.getId(), Map.of("reason", reason));
+            }
+        } else {
+            WebSocketSession other = session.otherParty(initiator);
+            if (other != null && other.isOpen()) {
+                send(other, "hangup", session.getId(), Map.of("reason", reason));
+            }
         }
 
         completedSessions.add(session);
         sessions.remove(session.getId());
 
         System.out.println("[RIMOSSA] sessione " + session.getId() + " (motivo: " + reason
-                + ") | totale sessioni rimanenti: " + sessions.size());
+                + ", stato finale: " + finalStatus + ") | totale sessioni rimanenti: " + sessions.size());
     }
 
     private void send(WebSocketSession recipient, String type, String sessionId, Object payload) throws IOException {
