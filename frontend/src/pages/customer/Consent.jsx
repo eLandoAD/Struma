@@ -1,12 +1,17 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSignaling } from "../../hooks/useSignaling";
 
 export default function Consent() {
   const [accepted, setAccepted] = useState(false);
   const navigate = useNavigate();
+  const { connect } = useSignaling();
 
   const handleProceed = () => {
-    if (!accepted) return;
+    if (!accepted) return; // guardia: nessuna azione se la checkbox non è spuntata
+
+    // La connessione WebSocket parte SOLO qui, dopo il consenso esplicito.
+    connect();
     navigate("/waiting-room");
   };
 

@@ -40,7 +40,7 @@ export default function Landing() {
           onClick={() => navigate("/consent")}
           className="mt-8 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
         >
-          Inizia consulenza
+          Start video call
           <ArrowRight size={16} />
         </button>
 

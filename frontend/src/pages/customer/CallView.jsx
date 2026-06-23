@@ -1,4 +1,9 @@
+import { useState, useEffect } from "react";
+
 export default function CallView() {
+  const [messages, setMessages] = useState([]);
+  const [chatText, setChatText] = useState("");
+
   return (
     <div className="p-8 text-center">
       <h1 className="text-3xl font-bold">Call View</h1>
@@ -6,5 +11,3 @@ export default function CallView() {
     </div>
   );
 }
-const [messages, setMessages] = useState([]);
-const [chatText, setChatText] = useState("");
