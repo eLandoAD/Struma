@@ -41,19 +41,33 @@ Il server è l'unica fonte di verità sullo stato della sessione. Nessun browser
 
 ## 4. Contratto dei messaggi WebSocket
 
-Tutti i messaggi viaggiano come JSON con la forma base `{ type, sessionId, payload }`. `sessionId` è assente solo nel primo messaggio (`join_queue`), che è quello che lo genera.
+Tutti i messaggi viaggiano come JSON con la forma fissa `{ type, sessionId, payload }`. `payload` è sempre un oggetto (anche vuoto `{}`), mai assente. `sessionId` è assente solo nel primissimo messaggio del customer (`join_queue`), perché è il server a generarlo.
 
 | # | type | Direzione | Payload | Scopo |
 |---|---|---|---|---|
-| 1 | `join_queue` | customer → server | `{ sourcePage }` | Crea la sessione in stato `queued`, il server risponde con `sessionId` |
-| 2 | `incoming_customer` | server → consultant disponibile | `{ sessionId, sourcePage, waitingSince }` | Notifica il prossimo consulente libero (routing "next available", non broadcast) |
-| 3 | `answer_customer` | consultant → server | `{ sessionId }` | Il server passa la sessione a `ringing → active` e la blocca per altri consulenti |
-| 3b | `decline_customer` | consultant → server | `{ sessionId }` | Il server cerca il prossimo consulente disponibile, o passa a `missed` se non ce ne sono |
-| 4 | `call_assigned` | server → entrambi | `{ sessionId, role: "caller" \| "callee" }` | Segnale che dice al browser del consultant di chiamare `getUserMedia` e creare l'offer |
-| 5 | `offer` | consultant → server → customer | `{ sessionId, sdp }` | Offerta SDP |
-| 6 | `answer` | customer → server → consultant | `{ sessionId, sdp }` | Risposta SDP |
-| 7 | `ice_candidate` | entrambe le direzioni | `{ sessionId, candidate }` | Relay puro, nessuna logica lato server |
-| 8 | `hangup` | entrambe le direzioni | `{ sessionId, reason }` | Il server chiude la sessione, la marca `ended`, scrive la riga nel call log |
+| 1 | `join_queue` | customer → server | `{ sourcePage }` | Crea la sessione in stato `QUEUED`. Nessun `sessionId` in questo messaggio: lo genera il server. |
+| 2 | `queued` | server → customer | `{ sourcePage }` | Risposta a `join_queue`. Da qui in avanti il client usa il `sessionId` ricevuto in busta per tutti i messaggi successivi. Fa partire anche il timeout lato server (vedi nota sotto). |
+| 3 | `consultant_available` | consultant → server | `{}` | Il consulente si dichiara libero. Nessun `sessionId` (non è ancora legato a nessuna sessione). Il server lo accoda e tenta subito un match. |
+| 4 | `incoming_customer` | server → consultant disponibile | `{ sourcePage }` | Notifica il prossimo consulente libero in coda (routing "next available", non broadcast a tutti i consulenti). Sessione passa a `RINGING`. |
+| 5 | `answer_customer` | consultant → server | `{}` | Il consulente ha risposto davvero. Il server passa la sessione a `ACTIVE`, **ferma il timeout**, e replica `call_assigned` a entrambe le parti. |
+| 6 | `decline_customer` | consultant → server | `{}` | Il consulente rifiuta. Il server rimette la sessione in coda (`QUEUED`) e cerca il prossimo consulente disponibile. **Il timeout originale continua a contare** — non si resetta a ogni decline. |
+| 7 | `call_assigned` | server → entrambi | `{ role: "caller" \| "callee" }` | Segnale che dice al browser del consultant (`caller`) di chiamare `getUserMedia`/canvas e creare l'offer; al customer (`callee`) di prepararsi a riceverla. |
+| 8 | `offer` | consultant → server → customer | `{ sdp }` | Offerta SDP. Relay puro per `sessionId`, nessuna logica del server sul contenuto. |
+| 9 | `answer` | customer → server → consultant | `{ sdp }` | Risposta SDP. Stesso relay puro. |
+| 10 | `ice_candidate` | entrambe le direzioni | `{ candidate }` | Relay puro, nessuna logica lato server. |
+| 11 | `hangup` | entrambe le direzioni, oppure server → parte rimanente | `{ reason }` | Il server chiude la sessione e la rimuove. `reason` può essere impostato dal client (es. `hangup_customer`, `hangup_consultant`) oppure generato dal server: `disconnect` (socket chiuso senza hangup esplicito) o `timeout` (vedi sotto). |
+| 12 | `missed` | server → customer | `{}` | Inviato quando il timeout di coda scade senza che nessun consulente abbia risposto (`answer_customer`). La sessione passa a `MISSED` e viene rimossa. Il customer dovrebbe qui mostrare il fallback "nessun consulente disponibile" (brief 3.7). |
+
+### Nota — timeout di coda
+
+Ogni sessione, alla creazione (`join_queue`), riceve un timer lato server (oggi **30 secondi**, valore di test — da alzare prima della demo). Il timer:
+- **si ferma** solo quando un consulente risponde per davvero (`answer_customer` → `ACTIVE`);
+- **continua a contare** anche se un consulente viene notificato (`incoming_customer`) e poi declina — il tempo totale di attesa del customer è quello che conta, non il tempo per singolo tentativo;
+- **allo scadere**, se la sessione è ancora `QUEUED` o `RINGING`, passa a `MISSED`: il customer riceve `missed`, l'eventuale consulente assegnato riceve `hangup` con `reason: "timeout"`.
+
+### Nota — disponibilità del consulente
+
+`consultant_available` è in-memory lato server di segnalazione (una coda di `WebSocketSession` libere), **non** la colonna `status` su DB della tabella `consultant`. Sono due cose distinte: il DB serve per persistenza/reporting (letto da Persona 3), questa coda serve per sapere a runtime quale socket è davvero libero per il prossimo match. Vanno tenute sincronizzate ma non sono la stessa fonte di verità.
 
 ## 5. Architettura media (WebRTC)
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useSignaling } from "../hooks/useSignaling";
 import {
   Bell,
   HelpCircle,
@@ -12,7 +13,7 @@ import { useAgentAuth } from "../context/AgentAuthContext";
 const NAV_ITEMS = [
   { label: "Dashboard", to: "/agent/dashboard", enabled: true },
   { label: "Analytics", to: "#", enabled: false },
-  { label: "Queue", to: "#", enabled: false },
+  { label: "Queue", to: "/console", enabled: true },
   { label: "Settings", to: "#", enabled: false },
 ];
 
@@ -22,6 +23,7 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { login } = useAgentAuth();
+  const { send } = useSignaling();
 
   const handleLoginSubmit = async ({ email, password }) => {
     await login(email, password);
@@ -53,13 +55,12 @@ export default function Navbar() {
                   key={item.label}
                   disabled={!item.enabled}
                   onClick={() => item.enabled && navigate(item.to)}
-                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-                    isActive
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${isActive
                       ? "bg-blue-100 text-blue-700"
                       : item.enabled
-                      ? "text-slate-700 hover:bg-blue-100 hover:text-blue-700"
-                      : "text-slate-400 cursor-not-allowed"
-                  }`}
+                        ? "text-slate-700 hover:bg-blue-100 hover:text-blue-700"
+                        : "text-slate-400 cursor-not-allowed"
+                    }`}
                 >
                   {item.label}
                 </button>
@@ -76,12 +77,16 @@ export default function Navbar() {
               <button
                 key={option}
                 type="button"
-                onClick={() => setAvailability(option)}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                  availability === option
+                onClick={() => {
+                  setAvailability(option);
+                  if (option === "Online") {
+                    send("consultant_available", null, {});
+                  }
+                }}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${availability === option
                     ? "bg-blue-600 text-white"
                     : "text-slate-600 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 {option}
               </button>
