@@ -1,5 +1,6 @@
 # Maven build output
 target/
+backend/data/
 
 # Node / frontend (quando arriva)
 node_modules/
@@ -12,4 +13,4 @@ build/
 .vscode/
 
 # OS
-.DS_Store
+.DS_Storebackend/data/

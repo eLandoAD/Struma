@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 export default function CallView() {
   return (
     <div className="p-8 text-center">
