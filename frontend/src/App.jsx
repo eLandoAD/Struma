@@ -7,12 +7,14 @@ import Navbar from "./components/Navbar";
 import { Button } from "./components/Button";
 import { Logo } from "./components/Logo";
 import { StatusToggle } from "./components/StatusToggle";
+import { SignalingProvider } from "./context/SignalingContext";
 
 
 import Landing from "./pages/customer/Landing";
 import Consent from "./pages/customer/Consent";
 import WaitingRoom from "./pages/customer/WaitingRoom";
 import CallView from "./pages/customer/CallView";
+import Console from "./pages/agent/Console";
 
 import AgentLogin from "./pages/agent/Login";
 import AgentDashboard from "./pages/agent/Dashboard";
@@ -54,7 +56,7 @@ function AppLayout() {
 
   return (
     <div className="flex h-screen w-screen bg-slate-50 text-slate-900 overflow-hidden">
-      {/* Sidebar - full height on left */}
+      {/* Assicurati che i puntini di sospensione "..." siano spariti da qui sotto: */}
       <Sidebar
         activeItem={activeItem}
         onNavigate={(key) => {
@@ -64,7 +66,7 @@ function AppLayout() {
         }}
         onEndConsultation={() => navigate("/")}
       />
-      {/* Right side - navbar + main */}
+      
       <div className="flex flex-col flex-1 overflow-hidden">
         <Navbar />
         <main className="flex-1 overflow-auto">
@@ -87,6 +89,7 @@ function AppLayout() {
                 </ProtectedAgentRoute>
               }
             />
+            <Route path="/console" element={<ProtectedAgentRoute><Console /></ProtectedAgentRoute>} />
           </Routes>
         </main>
       </div>
@@ -97,9 +100,11 @@ function AppLayout() {
 export default function App() {
   return (
     <AgentAuthProvider>
-      <BrowserRouter>
-        <AppLayout />
-      </BrowserRouter>
+      <SignalingProvider>
+        <BrowserRouter>
+          <AppLayout />
+        </BrowserRouter>
+      </SignalingProvider>
     </AgentAuthProvider>
   );
 }

@@ -11,7 +11,7 @@ import {
 const NAV_ITEMS = [
   { label: "Dashboard", to: "/agent/dashboard", enabled: true },
   { label: "Analytics", to: "#", enabled: false },
-  { label: "Queue", to: "#", enabled: false },
+  { label: "Queue", to: "/console", enabled: true },
   { label: "Settings", to: "#", enabled: false },
 ];
 
