@@ -6,6 +6,8 @@ import {
   User,
   Video,
 } from "lucide-react";
+import LoginModal from "./LoginModal";
+import { useAgentAuth } from "../context/AgentAuthContext";
 
 const NAV_ITEMS = [
   { label: "Dashboard", to: "/agent/dashboard", enabled: true },
@@ -16,8 +18,16 @@ const NAV_ITEMS = [
 
 export default function Navbar() {
   const [availability, setAvailability] = useState("Online");
+  const [showLogin, setShowLogin] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const { login } = useAgentAuth();
+
+  const handleLoginSubmit = async ({ email, password }) => {
+    await login(email, password);
+    setShowLogin(false);
+    navigate("/agent/dashboard");
+  };
 
   return (
     <header className="sticky top-0 z-20 border-b border-blue-100 bg-white w-full">
@@ -33,7 +43,7 @@ export default function Navbar() {
             </div>
             <span className="text-sm font-semibold text-blue-600 border-l border-blue-100 pl-4">Console</span>
           </div>
-          
+
           {/* Navigation Tabs */}
           <nav className="flex items-center gap-2 border-l border-blue-100 pl-8">
             {NAV_ITEMS.map((item) => {
@@ -97,13 +107,21 @@ export default function Navbar() {
 
           <button
             type="button"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-300 text-white"
+            onClick={() => setShowLogin(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-300 text-white hover:bg-slate-400 transition"
             title="Profile"
           >
             <User size={16} />
           </button>
         </div>
       </div>
+
+      {showLogin && (
+        <LoginModal
+          onClose={() => setShowLogin(false)}
+          onSubmit={handleLoginSubmit}
+        />
+      )}
     </header>
   );
 }

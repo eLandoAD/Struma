@@ -58,9 +58,11 @@ function AppLayout() {
       <Sidebar
         activeItem={activeItem}
         onNavigate={(key) => {
-          if (key === "live-stream" || key === "support") {
+          if (key === "live-stream") {
             navigate("/agent/dashboard");
           }
+          // "support" non naviga più da nessuna parte per ora.
+          // Quando avrai una pagina/azione dedicata, gestiscila qui.
         }}
         onEndConsultation={() => navigate("/")}
       />

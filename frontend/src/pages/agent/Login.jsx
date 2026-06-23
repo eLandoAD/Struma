@@ -1,17 +1,19 @@
-import { useEffect } from "react";
-import { useAgentAuth } from "../../hooks/useAgentAuth";
+import { useNavigate } from "react-router-dom";
+import LoginModal from "../../components/LoginModal";
+import { useAgentAuth } from "../../context/AgentAuthContext";
 
 export default function AgentLogin() {
-  const { login } = useAgentAuth();
+  const navigate = useNavigate();
+  const { login } = useAgentAuth(); // adatta al metodo esposto dal tuo context
 
-  useEffect(() => {
-    login();
-  }, [login]);
+  const handleClose = () => {
+    navigate("/"); // chiusura popup -> torna alla landing
+  };
 
-  return (
-    <div className="p-8 text-center">
-      <h1 className="text-3xl font-bold">Agent Login</h1>
-      <p className="mt-4 text-[var(--color-text-dim)]">Agent login placeholder.</p>
-    </div>
-  );
+  const handleSubmit = async ({ email, password }) => {
+    await login(email, password);
+    navigate("/agent/dashboard");
+  };
+
+  return <LoginModal onClose={handleClose} onSubmit={handleSubmit} />;
 }
