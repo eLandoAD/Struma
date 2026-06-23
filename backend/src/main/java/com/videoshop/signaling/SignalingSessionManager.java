@@ -24,7 +24,13 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class SignalingSessionManager {
 
+    // Tempo massimo totale dalla join_queue prima che la sessione vada in MISSED,
+    // indipendentemente da quanti consulenti l'hanno ignorata nel frattempo.
     private static final long QUEUE_TIMEOUT_SECONDS = 30;
+
+    // Tempo massimo che UN consulente ha per rispondere a una notifica
+    // incoming_customer, prima che la richiesta torni in coda per il prossimo.
+    private static final long RINGING_TIMEOUT_SECONDS = 15;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -37,6 +43,7 @@ public class SignalingSessionManager {
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final Map<String, ScheduledFuture<?>> timeoutTasks = new ConcurrentHashMap<>();
+    private final Map<String, ScheduledFuture<?>> ringingTimeoutTasks = new ConcurrentHashMap<>();
 
     public SignalingSessionManager(CallSessionRepository repository) {
         this.repository = repository;
@@ -109,6 +116,21 @@ public class SignalingSessionManager {
         }
     }
 
+    private void scheduleRingingTimeout(String sessionId) {
+        ScheduledFuture<?> future = scheduler.schedule(
+                () -> handleRingingTimeout(sessionId),
+                RINGING_TIMEOUT_SECONDS,
+                TimeUnit.SECONDS);
+        ringingTimeoutTasks.put(sessionId, future);
+    }
+
+    private void cancelRingingTimeout(String sessionId) {
+        ScheduledFuture<?> future = ringingTimeoutTasks.remove(sessionId);
+        if (future != null) {
+            future.cancel(false);
+        }
+    }
+
     private void handleTimeout(String sessionId) {
         synchronized (matchLock) {
             timeoutTasks.remove(sessionId);
@@ -130,7 +152,42 @@ public class SignalingSessionManager {
                 System.out.println("[TIMEOUT] errore nella chiusura sessione: " + e.getMessage());
             }
 
-            System.out.println("[TIMEOUT] sessione " + sessionId + " -> MISSED (nessuna risposta entro " + QUEUE_TIMEOUT_SECONDS + "s)");
+            System.out.println("[TIMEOUT] sessione " + sessionId + " -> MISSED (nessuna risposta entro " + QUEUE_TIMEOUT_SECONDS + "s totali)");
+        }
+    }
+
+    /**
+     * Scade il tempo che UN consulente specifico aveva per rispondere.
+     * A differenza di handleTimeout, questo NON chiude la sessione: la
+     * rimette in coda per essere riproposta al prossimo consulente
+     * disponibile. Il timeout "totale" (handleTimeout, 30s) resta comunque
+     * attivo in background e farà comunque scattare MISSED se il tempo
+     * complessivo scade, indipendentemente da quanti consulenti l'hanno
+     * ignorata nel frattempo.
+     */
+    private void handleRingingTimeout(String sessionId) {
+        synchronized (matchLock) {
+            ringingTimeoutTasks.remove(sessionId);
+            CallSession session = sessions.get(sessionId);
+            if (session == null) return;
+            if (session.getStatus() != CallSession.Status.RINGING) return; // già risposto/gestito altrove
+
+            WebSocketSession unresponsiveConsultant = session.getConsultantSocket();
+
+            session.setConsultantSocket(null);
+            session.setStatus(CallSession.Status.QUEUED);
+            waitingCustomers.addFirst(sessionId);
+
+            try {
+                if (unresponsiveConsultant != null && unresponsiveConsultant.isOpen()) {
+                    send(unresponsiveConsultant, "incoming_customer_cancelled", sessionId, Map.of());
+                }
+                tryMatch();
+            } catch (IOException e) {
+                System.out.println("[RINGING TIMEOUT] errore nel rimettere in coda: " + e.getMessage());
+            }
+
+            System.out.println("[RINGING TIMEOUT] sessione " + sessionId + " -> rimessa in coda (consulente non ha risposto entro " + RINGING_TIMEOUT_SECONDS + "s)");
         }
     }
 
@@ -156,6 +213,7 @@ public class SignalingSessionManager {
 
             session.setConsultantSocket(consultant);
             session.setStatus(CallSession.Status.RINGING);
+            scheduleRingingTimeout(sessionId);
 
             send(consultant, "incoming_customer", sessionId, Map.of(
                     "sourcePage", session.getSourcePage(),
@@ -169,6 +227,7 @@ public class SignalingSessionManager {
             return;
 
         cancelTimeout(sessionId);
+        cancelRingingTimeout(sessionId);
 
         session.setAnsweredAt(Instant.now());
         session.setStatus(CallSession.Status.ACTIVE);
@@ -187,6 +246,8 @@ public class SignalingSessionManager {
         CallSession session = sessions.get(sessionId);
         if (session == null || !consultant.equals(session.getConsultantSocket()))
             return;
+
+        cancelRingingTimeout(sessionId);
 
         session.setConsultantSocket(null);
         session.setStatus(CallSession.Status.QUEUED);
@@ -220,6 +281,7 @@ public class SignalingSessionManager {
         }
 
         cancelTimeout(session.getId());
+        cancelRingingTimeout(session.getId());
         session.setEndedAt(Instant.now());
         session.setEndReason(reason);
 
