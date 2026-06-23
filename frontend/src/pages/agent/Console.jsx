@@ -24,14 +24,24 @@ function createFakeVideoTrack() {
 
 export default function Console() {
   const { connected, send, on } = useSignaling();
-
   const [queue, setQueue] = useState([]); // [{ sessionId, sourcePage, waitingSince }]
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [callState, setCallState] = useState("idle"); // idle | connecting | active
   const [logLines, setLogLines] = useState([]);
 
-  const pcRef = useRef(null);
-  const localVideoRef = useRef(null);
+const pcRef = useRef(null);
+
+const localVideoRef = useRef(null);
+
+const remoteVideoRef = useRef(null);
+
+const chatChannelRef = useRef(null);
+
+const fileChannelRef = useRef(null);
+
+const [messages, setMessages] = useState([]);
+
+const [chatText, setChatText] = useState("");
 
   const appendLog = (msg) => setLogLines((prev) => [...prev.slice(-49), msg]);
 
@@ -101,6 +111,22 @@ export default function Console() {
 
     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     pcRef.current = pc;
+    const chatChannel =
+    pc.createDataChannel("chat");
+
+chatChannelRef.current =
+    chatChannel;
+
+chatChannel.onmessage = event => {
+
+    setMessages(prev => [
+        ...prev,
+        {
+            sender: "customer",
+            text: event.data
+        }
+    ]);
+};
 
     pc.onicecandidate = (e) => {
       if (e.candidate) send("ice_candidate", sessionId, { candidate: e.candidate });
@@ -109,6 +135,30 @@ export default function Console() {
       appendLog("stato connessione: " + pc.connectionState);
       if (pc.connectionState === "connected") setCallState("active");
     };
+    pc.ondatachannel = event => {
+
+    if (
+        event.channel.label === "chat"
+    ) {
+
+        chatChannelRef.current =
+            event.channel;
+
+        event.channel.onmessage =
+            msg => {
+
+                setMessages(prev => [
+                    ...prev,
+                    {
+                        sender:
+                            "customer",
+                        text:
+                            msg.data
+                    }
+                ]);
+            };
+    }
+};
 
     // Audio vero (getUserMedia), video finto via canvas — stessa scelta già
     // fatta in consultant.html, per lo stesso motivo (ambiente senza camera
@@ -149,6 +199,105 @@ export default function Console() {
     if (activeSessionId) send("hangup", activeSessionId, { reason: "consultant_hangup" });
     endCall();
   }
+  async function startScreenShare() {
+  if (!pcRef.current) return;
+
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: true
+  });
+
+  const screenTrack = stream.getVideoTracks()[0];
+
+  const sender = pcRef.current
+    .getSenders()
+    .find(
+      sender =>
+        sender.track &&
+        sender.track.kind === "video"
+    );
+
+  if (!sender) return;
+
+  await sender.replaceTrack(screenTrack);
+
+  screenTrack.onended = async () => {
+    const audioStream =
+      await navigator.mediaDevices.getUserMedia({
+        audio: true
+      });
+
+    const videoTrack =
+      createFakeVideoTrack();
+
+    const sender =
+      pcRef.current
+        ?.getSenders()
+        .find(
+          s =>
+            s.track &&
+            s.track.kind === "video"
+        );
+
+    if (sender) {
+      await sender.replaceTrack(
+        videoTrack
+      );
+    }
+  };
+}
+  function sendChat() {
+
+    if (
+        !chatText.trim()
+    ) {
+        return;
+    }
+
+    chatChannelRef.current?.send(
+        chatText
+    );
+
+    setMessages(prev => [
+        ...prev,
+        {
+            sender: "consultant",
+            text: chatText
+        }
+    ]);
+
+    setChatText("");
+}
+async function startScreenShare() {
+
+    const stream =
+        await navigator
+            .mediaDevices
+            .getDisplayMedia({
+                video: true
+            });
+
+    const screenTrack =
+        stream
+            .getVideoTracks()[0];
+
+    const sender =
+        pcRef.current
+            ?.getSenders()
+            .find(
+                sender =>
+                    sender.track &&
+                    sender.track.kind ===
+                    "video"
+            );
+
+    if (!sender) {
+        return;
+    }
+
+    await sender.replaceTrack(
+        screenTrack
+    );
+}
 
   return (
     <div className="min-h-screen bg-slate-50 p-8">
@@ -162,13 +311,22 @@ export default function Console() {
           <h2 className="font-bold mb-2">Video (consulente)</h2>
           <video ref={localVideoRef} autoPlay muted playsInline className="w-full bg-black rounded" />
           {activeSessionId && (
+          <div className="mt-3 flex gap-2">
             <button
-              className="mt-3 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              onClick={startScreenShare}
+            >
+              Share Screen
+            </button>
+
+            <button
+              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
               onClick={handleEndCall}
             >
               End Call
             </button>
-          )}
+          </div>
+        )}
         </div>
 
         <div className="border rounded bg-white p-4">
@@ -198,6 +356,47 @@ export default function Console() {
           ))}
         </div>
       </div>
+      
+      <div className="border rounded bg-white p-4 mb-6">
+
+  <h2 className="font-bold mb-2">
+    Chat
+  </h2>
+
+  <div className="h-48 overflow-y-auto border p-2 mb-2">
+
+    {messages.map((m,i) => (
+
+      <div key={i}>
+        <b>{m.sender}</b>: {m.text}
+      </div>
+
+    ))}
+
+  </div>
+
+  <div className="flex gap-2">
+
+    <input
+      className="flex-1 border p-2 rounded"
+      value={chatText}
+      onChange={e =>
+        setChatText(
+          e.target.value
+        )
+      }
+    />
+
+    <button
+      className="px-4 py-2 bg-blue-600 text-white rounded"
+      onClick={sendChat}
+    >
+      Send
+    </button>
+
+  </div>
+
+</div>
 
       <div className="border rounded bg-white p-4">
         <h2 className="font-bold mb-2">Log</h2>
