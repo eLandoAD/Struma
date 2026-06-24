@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useSignaling } from "../hooks/useSignaling";
 import { Bell, HelpCircle, User } from "lucide-react";
 import LoginModal from "./LoginModal";
+import { StatusToggle } from "./StatusToggle";
 import { useAgentAuth } from "../context/AgentAuthContext";
 
 const NAV_ITEMS = [
@@ -13,7 +14,7 @@ const NAV_ITEMS = [
 ];
 
 export default function Navbar() {
-  const [availability, setAvailability] = useState("Online");
+  const [availability, setAvailability] = useState("ONLINE");
   const [showLogin, setShowLogin] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -24,6 +25,15 @@ export default function Navbar() {
     await login(email, password);
     setShowLogin(false);
     navigate("/agent/dashboard");
+  };
+
+  // Riga da preservare: l'aggancio a consultant_available, ora con
+  // il valore in maiuscolo "ONLINE" perché è quello che usa StatusToggle.
+  const handleAvailabilityChange = (value) => {
+    setAvailability(value);
+    if (value === "ONLINE") {
+      send("consultant_available", null, {});
+    }
   };
 
   return (
@@ -58,28 +68,7 @@ export default function Navbar() {
 
         {/* Right - Status, Icons */}
         <div className="flex items-center gap-3">
-          {/* Status Toggle */}
-          <div className="flex items-center gap-0.5 rounded-md bg-slate-100 p-0.5">
-            {["Online", "Busy", "Offline"].map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => {
-                  setAvailability(option);
-                  if (option === "Online") {
-                    send("consultant_available", null, {});
-                  }
-                }}
-                className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
-                  availability === option
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
+          <StatusToggle value={availability} onChange={handleAvailabilityChange} />
 
           {/* Icons */}
           <button
