@@ -267,37 +267,7 @@ chatChannel.onmessage = event => {
 
     setChatText("");
 }
-async function startScreenShare() {
 
-    const stream =
-        await navigator
-            .mediaDevices
-            .getDisplayMedia({
-                video: true
-            });
-
-    const screenTrack =
-        stream
-            .getVideoTracks()[0];
-
-    const sender =
-        pcRef.current
-            ?.getSenders()
-            .find(
-                sender =>
-                    sender.track &&
-                    sender.track.kind ===
-                    "video"
-            );
-
-    if (!sender) {
-        return;
-    }
-
-    await sender.replaceTrack(
-        screenTrack
-    );
-}
 
   return (
     <div className="min-h-screen bg-slate-50 p-8">
