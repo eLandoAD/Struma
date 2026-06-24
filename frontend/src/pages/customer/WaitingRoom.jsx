@@ -26,20 +26,26 @@ export default function WaitingRoom() {
     });
 
     const offOffer = on("offer", async (payload, sid) => {
+      const instanceId = Math.random().toString(36).slice(2, 8);
+      console.log("🔵 HANDLER OFFER ESEGUITO — istanza:", instanceId, "sessionId:", sid);
+
       if (pcRef.current) {
+        console.log("🟡 Chiudo una RTCPeerConnection precedente ancora presente (istanza precedente)");
         pcRef.current.close();
         pcRef.current = null;
       }
+
       const pc = new RTCPeerConnection({
         iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
       });
       pcRef.current = pc;
+      pc._instanceId = instanceId; // solo per debug, lo leggiamo dopo
 
       // Regola one-way: nessun getUserMedia per il VIDEO, solo recvonly.
       pc.addTransceiver("video", { direction: "recvonly" });
 
       pc.ontrack = (event) => {
-        console.log("Customer ha ricevuto track:", event.track.kind);
+        console.log("Customer ha ricevuto track:", event.track.kind, "— istanza:", pc._instanceId);
         if (videoRef.current) {
           videoRef.current.srcObject = event.streams[0];
         }
@@ -72,7 +78,7 @@ export default function WaitingRoom() {
       await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      console.log("Senders del customer:", pc.getSenders().map(s => s.track?.kind));
+      console.log("Senders del customer:", pc.getSenders().map(s => s.track?.kind), "— istanza:", pc._instanceId);
       send("answer", sid, { sdp: answer });
     });
 

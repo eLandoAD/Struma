@@ -16,6 +16,12 @@
     const ws = new WebSocket(wsUrl);
     let pc, currentSessionId;
 
+    setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 25000);
+
     function send(type, payload) {
       ws.send(JSON.stringify({ type, sessionId: currentSessionId, payload: payload || {} }));
     }

@@ -26,7 +26,7 @@ public class SignalingSessionManager {
 
     // Tempo massimo totale dalla join_queue prima che la sessione vada in MISSED,
     // indipendentemente da quanti consulenti l'hanno ignorata nel frattempo.
-    private static final long QUEUE_TIMEOUT_SECONDS = 30;
+    private static final long QUEUE_TIMEOUT_SECONDS = 90;
 
     // Tempo massimo che UN consulente ha per rispondere a una notifica
     // incoming_customer, prima che la richiesta torni in coda per il prossimo.
@@ -62,6 +62,7 @@ public class SignalingSessionManager {
             case "decline_customer" -> handleDeclineCustomer(sender, sessionId);
             case "offer", "answer", "ice_candidate" -> relay(sender, sessionId, type, payload);
             case "hangup" -> handleHangup(sender, sessionId, payload);
+            case "ping" -> { /* keepalive, nessuna azione */ }
             default -> System.out.println("Tipo messaggio non riconosciuto: " + type);
         }
     }

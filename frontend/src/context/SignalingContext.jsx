@@ -53,9 +53,30 @@ export function SignalingProvider({ children }) {
     wsRef.current = null;
   }, []);
 
-  // Chiude il socket quando l'intera app viene smontata (es. refresh/tab chiusa).
   useEffect(() => {
-    return () => wsRef.current?.close();
+    const ws = new WebSocket(resolveWsUrl());
+    wsRef.current = ws;
+
+    ws.onopen = () => setConnected(true);
+    ws.onclose = () => setConnected(false);
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      const handlers = listenersRef.current[msg.type] || [];
+      handlers.forEach((h) => h(msg.payload, msg.sessionId));
+    };
+
+    // Heartbeat: mantiene viva la connessione attraverso eventuali proxy
+    // (es. Codespaces) che chiudono i WebSocket inattivi dopo un po'.
+    const heartbeat = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "ping" }));
+      }
+    }, 25000); // ogni 25s, ben sotto la maggior parte dei timeout di proxy
+
+    return () => {
+      clearInterval(heartbeat);
+      ws.close();
+    };
   }, []);
 
   const send = useCallback((type, sessionId, payload = {}) => {
