@@ -8,6 +8,9 @@ export default function WaitingRoom() {
   const [micError, setMicError] = useState(null);
   const videoRef = useRef(null);
   const pcRef = useRef(null);
+  const [messages, setMessages] = useState([]);
+  const [chatText, setChatText] = useState("");
+  const chatChannelRef = useRef(null);
 
   useEffect(() => {
     if (!connected) return;
@@ -40,6 +43,15 @@ export default function WaitingRoom() {
       });
       pcRef.current = pc;
       pc._instanceId = instanceId; // solo per debug, lo leggiamo dopo
+
+      pc.ondatachannel = (event) => {
+        if (event.channel.label === "chat") {
+          chatChannelRef.current = event.channel;
+          event.channel.onmessage = (msg) => {
+            setMessages((prev) => [...prev, { sender: "consultant", text: msg.data }]);
+          };
+        }
+      };
 
       // Regola one-way: nessun getUserMedia per il VIDEO, solo recvonly.
       pc.addTransceiver("video", { direction: "recvonly" });
@@ -115,6 +127,13 @@ export default function WaitingRoom() {
     };
   }, [connected]);
 
+  function sendChat() {
+    if (!chatText.trim()) return;
+    chatChannelRef.current?.send(chatText);
+    setMessages((prev) => [...prev, { sender: "customer", text: chatText }]);
+    setChatText("");
+  }
+
   return (
     <div className="p-8 text-center">
       <h1 className="text-3xl font-bold">Waiting Room</h1>
@@ -134,26 +153,51 @@ export default function WaitingRoom() {
       )}
 
       {status === "assigned" && (
-        <div className="mt-4">
-          <p className="mb-4 text-[var(--color-text-dim)]">Consulente assegnato — chiamata in corso.</p>
-          {micError && (
-            <p className="mb-2 text-sm text-amber-600">
-              Microfono non disponibile ({micError}) — la chiamata continua senza il tuo audio.
-            </p>
-          )}
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            width={480}
-            style={{
-              display: status === "assigned" ? "block" : "none",
-              margin: "16px auto 0",
-              border: "2px solid #2563eb",
-              background: "#000",
-              borderRadius: "8px",
-            }}
-          />
+        <div>
+          <div className="mt-4">
+            <p className="mb-4 text-[var(--color-text-dim)]">Consulente assegnato — chiamata in corso.</p>
+            {micError && (
+              <p className="mb-2 text-sm text-amber-600">
+                Microfono non disponibile ({micError}) — la chiamata continua senza il tuo audio.
+              </p>
+            )}
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              width={480}
+              style={{
+                display: status === "assigned" ? "block" : "none",
+                margin: "16px auto 0",
+                border: "2px solid #2563eb",
+                background: "#000",
+                borderRadius: "8px",
+              }}
+            />
+          </div>
+          <div className="mt-4 border rounded p-3 text-left">
+            <h3 className="font-bold mb-2">Chat</h3>
+            <div className="h-40 overflow-y-auto border p-2 mb-2 bg-white">
+              {messages.map((m, i) => (
+                <div key={i}>
+                  <b>{m.sender}</b>: {m.text}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 border p-2 rounded"
+                value={chatText}
+                onChange={(e) => setChatText(e.target.value)}
+              />
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded"
+                onClick={sendChat}
+              >
+                Invia
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
