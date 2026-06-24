@@ -82,6 +82,17 @@ Il timer:
 
 Modello "next available consultant": il server mantiene una lista di consulenti con stato `online | busy | offline`. Alla `join_queue`, il server notifica il primo `online` disponibile. Su `decline`, passa al successivo. Routing per skill/gruppo è fuori scope per i 5 giorni.
 
+### 6.1 Timeout di risposta del singolo consulente
+
+Oltre al timeout totale della sessione (sezione 4, 90s), esiste un secondo timeout più breve e indipendente: quando un consulente specifico viene notificato (`incoming_customer`, sessione passa a `RINGING`), ha **15 secondi** per rispondere (`answer_customer`) prima che la richiesta gli venga tolta automaticamente.
+
+Se scade:
+- la sessione torna `QUEUED` e viene rimessa in testa alla coda d'attesa, pronta per essere riproposta al prossimo consulente disponibile;
+- il consulente che non ha risposto in tempo riceve `incoming_customer_cancelled` (stesso `sessionId`, payload vuoto) — segnale per la UI di togliere quella richiesta dalla lista, senza che si tratti di un hangup di una chiamata reale (nessuna `RTCPeerConnection` esiste ancora a questo punto);
+- il timeout totale della sessione (90s) **non si resetta**: continua a contare dal momento della `join_queue` originale, indipendentemente da quanti consulenti hanno lasciato scadere il loro turno di 15s.
+
+Questo permette al brief di essere rispettato su due fronti contemporaneamente: un singolo consulente distratto non blocca il customer per tutto il timeout totale (la richiesta passa rapidamente al prossimo), ma il customer comunque non resta in attesa oltre il limite massimo complessivo anche se più consulenti ignorano la notifica in sequenza.
+
 ## 7. Strumenti in-call: trasporto
 
 Decisione finale (rivista rispetto alla bozza iniziale, dopo l'implementazione):
