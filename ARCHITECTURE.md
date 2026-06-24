@@ -60,7 +60,8 @@ Tutti i messaggi viaggiano come JSON con la forma fissa `{ type, sessionId, payl
 
 ### Nota — timeout di coda
 
-Ogni sessione, alla creazione (`join_queue`), riceve un timer lato server (oggi **30 secondi**, valore di test — da alzare prima della demo). Il timer:
+Ogni sessione, alla creazione (`join_queue`), riceve un timer lato server (oggi **90 secondi**, scelto per dare margine al flusso reale Landing → Consent → WaitingRoom). 
+Il timer:
 - **si ferma** solo quando un consulente risponde per davvero (`answer_customer` → `ACTIVE`);
 - **continua a contare** anche se un consulente viene notificato (`incoming_customer`) e poi declina — il tempo totale di attesa del customer è quello che conta, non il tempo per singolo tentativo;
 - **allo scadere**, se la sessione è ancora `QUEUED` o `RINGING`, passa a `MISSED`: il customer riceve `missed`, l'eventuale consulente assegnato riceve `hangup` con `reason: "timeout"`.
@@ -75,6 +76,7 @@ Ogni sessione, alla creazione (`join_queue`), riceve un timer lato server (oggi 
 - **One-way video, enforcement**: il browser del customer non chiama mai `getUserMedia` per il video. Aggiunge solo una transceiver video `recvonly`. Niente da "disattivare" dopo: è strutturalmente impossibile che il customer pubblichi video, perché lo stream non esiste mai dal suo lato.
 - **Audio**: `sendrecv` su entrambi i lati.
 - Cleanup: ogni `hangup` (volontario o per disconnessione WebSocket rilevata dal server) chiude la `RTCPeerConnection` su entrambi i lati e libera la sessione lato server. Da implementare anche un heartbeat/timeout per i tab chiusi senza un hangup esplicito.
+- **Heartbeat**: ogni client (consultant e customer) manda un messaggio `{ type: "ping" }` ogni 25 secondi sul WebSocket di segnalazione. Necessario perché alcuni proxy (es. quello di GitHub Codespaces) chiudono i WebSocket considerati inattivi dopo circa un minuto — senza heartbeat, una chiamata che dura più a lungo perdeva il canale di segnalazione (pur restando attivo il media P2P) e veniva quindi terminata erroneamente come `disconnect`. Il server ignora silenziosamente questi messaggi.
 
 ## 6. Routing
 
@@ -82,9 +84,24 @@ Modello "next available consultant": il server mantiene una lista di consulenti 
 
 ## 7. Strumenti in-call: trasporto
 
-Decisione per questo sprint: **chat e file transfer passano dal WebSocket di segnalazione** (relay lato server), non da un `RTCDataChannel` separato. Più semplice da debuggare, nessun impatto sui criteri di valutazione. Da rivedere come refinement se avanza tempo.
+Decisione finale (rivista rispetto alla bozza iniziale, dopo l'implementazione):
 
-Screen sharing resta invece dentro WebRTC (traccia aggiuntiva via `getDisplayMedia`, negoziata come track separata sulla stessa peer connection) — dettaglio del flusso ancora da definire.
+- **Chat testuale** → `RTCDataChannel`, peer-to-peer sulla stessa `RTCPeerConnection` della chiamata. Sia il consultant che il customer creano/ricevono il canale (`createDataChannel` / `ondatachannel`). Il server di segnalazione non vede mai il contenuto dei messaggi — coerente con il principio "il server è solo un broker di segnalazione" (sezione 5): chat e media seguono lo stesso percorso P2P, invece di introdurre un'eccezione che fa transitare dati applicativi dal backend.
+- **File transfer** (one-way, customer → consultant) → relay attraverso il WebSocket di segnalazione, **non** DataChannel. Motivo: il server può applicare un limite di dimensione massima prima di inoltrare il file (vedi 7.1), cosa che con un DataChannel richiederebbe di implementare manualmente il chunking lato client. Per un file singolo di dimensioni contenute, il relay resta la soluzione più semplice e già protetta.
+- **Screen sharing** → dentro WebRTC, traccia video aggiuntiva. Consultant → customer è implementato con `sender.replaceTrack()` sullo stesso sender video esistente (zero rinegoziazione SDP necessaria: alla fine della condivisione, lo stesso meccanismo ripristina il video finto/webcam). Customer → consultant (per la direzione two-way richiesta dal brief, punto 1) non è ancora implementato: richiede vera rinegoziazione, perché il customer ha oggi solo una transceiver video `recvonly` e serve cambiarne la direzione o aggiungerne una nuova.
+
+### 7.1 Contratto messaggi — file transfer
+
+| type | Direzione | Payload | Note |
+|---|---|---|---|
+| `file_transfer` | customer → consultant (solo questa direzione) | `{ filename, mimeType, data }` | `data` è il file codificato in base64. Limite attuale: ~10 MB di file reale (~13.3 MB di base64), applicato lato server |
+| `file_transfer_rejected` | server → customer | `{ reason: "file_too_large", maxBytesApprox }` | Risposta automatica del server se il file supera il limite |
+
+**Nota sulla direzione:** il server non impedisce tecnicamente che un consultant mandi `file_transfer` — è una convenzione lato client da rispettare (brief 3.4). Se serve enforcement lato server, va aggiunto un controllo su chi è il sender rispetto a `session.getCustomerSocket()`.
+
+### 7.2 Chat via DataChannel — dettaglio implementativo
+
+Il canale dati si chiama `"chat"` (`pc.createDataChannel("chat")`), creato dal lato che inizia la negoziazione (oggi: il consultant, come `caller`). Il customer lo riceve passivamente tramite l'evento `ondatachannel` sulla propria `RTCPeerConnection`. Nessun messaggio relativo alla chat passa per il WebSocket di segnalazione — il backend non ha visibilità sul contenuto né sa quando avviene uno scambio di messaggi chat.
 
 ## 8. Semplificazioni di scope (intenzionali, da 5 giorni)
 
