@@ -26,7 +26,7 @@ public class SignalingSessionManager {
 
     // Tempo massimo totale dalla join_queue prima che la sessione vada in MISSED,
     // indipendentemente da quanti consulenti l'hanno ignorata nel frattempo.
-    private static final long QUEUE_TIMEOUT_SECONDS = 30;
+    private static final long QUEUE_TIMEOUT_SECONDS = 90;
 
     // Tempo massimo che UN consulente ha per rispondere a una notifica
     // incoming_customer, prima che la richiesta torni in coda per il prossimo.
@@ -61,7 +61,10 @@ public class SignalingSessionManager {
             case "answer_customer" -> handleAnswerCustomer(sender, sessionId);
             case "decline_customer" -> handleDeclineCustomer(sender, sessionId);
             case "offer", "answer", "ice_candidate" -> relay(sender, sessionId, type, payload);
+            case "file_transfer" -> relayFileTransfer(sender, sessionId, payload);
             case "hangup" -> handleHangup(sender, sessionId, payload);
+            case "ping" -> {
+                /* keepalive, nessuna azione */ }
             default -> System.out.println("Tipo messaggio non riconosciuto: " + type);
         }
     }
@@ -135,12 +138,13 @@ public class SignalingSessionManager {
         synchronized (matchLock) {
             timeoutTasks.remove(sessionId);
             CallSession session = sessions.get(sessionId);
-            if (session == null) return;
+            if (session == null)
+                return;
 
             CallSession.Status status = session.getStatus();
             if (status == CallSession.Status.ACTIVE
-                || status == CallSession.Status.ENDED
-                || status == CallSession.Status.MISSED) {
+                    || status == CallSession.Status.ENDED
+                    || status == CallSession.Status.MISSED) {
                 return;
             }
 
@@ -152,7 +156,8 @@ public class SignalingSessionManager {
                 System.out.println("[TIMEOUT] errore nella chiusura sessione: " + e.getMessage());
             }
 
-            System.out.println("[TIMEOUT] sessione " + sessionId + " -> MISSED (nessuna risposta entro " + QUEUE_TIMEOUT_SECONDS + "s totali)");
+            System.out.println("[TIMEOUT] sessione " + sessionId + " -> MISSED (nessuna risposta entro "
+                    + QUEUE_TIMEOUT_SECONDS + "s totali)");
         }
     }
 
@@ -169,8 +174,10 @@ public class SignalingSessionManager {
         synchronized (matchLock) {
             ringingTimeoutTasks.remove(sessionId);
             CallSession session = sessions.get(sessionId);
-            if (session == null) return;
-            if (session.getStatus() != CallSession.Status.RINGING) return; // già risposto/gestito altrove
+            if (session == null)
+                return;
+            if (session.getStatus() != CallSession.Status.RINGING)
+                return; // già risposto/gestito altrove
 
             WebSocketSession unresponsiveConsultant = session.getConsultantSocket();
 
@@ -187,7 +194,8 @@ public class SignalingSessionManager {
                 System.out.println("[RINGING TIMEOUT] errore nel rimettere in coda: " + e.getMessage());
             }
 
-            System.out.println("[RINGING TIMEOUT] sessione " + sessionId + " -> rimessa in coda (consulente non ha risposto entro " + RINGING_TIMEOUT_SECONDS + "s)");
+            System.out.println("[RINGING TIMEOUT] sessione " + sessionId
+                    + " -> rimessa in coda (consulente non ha risposto entro " + RINGING_TIMEOUT_SECONDS + "s)");
         }
     }
 
@@ -266,6 +274,24 @@ public class SignalingSessionManager {
         if (recipient == null || !recipient.isOpen())
             return;
         send(recipient, type, sessionId, payload);
+    }
+
+    // Limite di sicurezza: un file troppo grande in base64 dentro un messaggio
+    // WebSocket può superare il buffer di default e rompere la sessione
+    // silenziosamente. 10 MB di file reale ~= 13.3 MB di base64.
+    private static final int MAX_FILE_BASE64_CHARS = 14_000_000;
+
+    private void relayFileTransfer(WebSocketSession sender, String sessionId, JsonNode payload) throws IOException {
+        String data = payload.path("data").asText("");
+        if (data.length() > MAX_FILE_BASE64_CHARS) {
+            send(sender, "file_transfer_rejected", sessionId, Map.of(
+                    "reason", "file_too_large",
+                    "maxBytesApprox", 10_000_000));
+            System.out.println("[FILE RIFIUTATO] sessione " + sessionId + " — file troppo grande (" + data.length()
+                    + " char base64)");
+            return;
+        }
+        relay(sender, sessionId, "file_transfer", payload);
     }
 
     private void handleHangup(WebSocketSession sender, String sessionId, JsonNode payload) throws IOException {

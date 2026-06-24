@@ -8,6 +8,9 @@ export default function WaitingRoom() {
   const [status, setStatus] = useState("idle"); // idle | queued | assigned | missed
   const videoRef = useRef(null);
   const pcRef = useRef(null);
+  const [messages, setMessages] = useState([]);
+  const [chatText, setChatText] = useState("");
+  const chatChannelRef = useRef(null);
 
   useEffect(() => {
     if (!connected) return;
@@ -26,10 +29,27 @@ export default function WaitingRoom() {
     });
 
     const offOffer = on("offer", async (payload, sid) => {
+      // Se arriva una nuova offerta mentre una connessione precedente
+      // è ancora viva, la chiudiamo prima: evita due RTCPeerConnection
+      // attive in parallelo che si contendono lo stesso videoRef.
+      if (pcRef.current) {
+        pcRef.current.close();
+        pcRef.current = null;
+      }
+
       const pc = new RTCPeerConnection({
         iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
       });
       pcRef.current = pc;
+
+      pc.ondatachannel = (event) => {
+        if (event.channel.label === "chat") {
+          chatChannelRef.current = event.channel;
+          event.channel.onmessage = (msg) => {
+            setMessages((prev) => [...prev, { sender: "consultant", text: msg.data }]);
+          };
+        }
+      };
 
       // Regola one-way: nessun getUserMedia qui, solo recvonly.
       pc.addTransceiver("video", { direction: "recvonly" });
@@ -85,6 +105,13 @@ export default function WaitingRoom() {
     };
   }, [connected]);
 
+  function sendChat() {
+    if (!chatText.trim()) return;
+    chatChannelRef.current?.send(chatText);
+    setMessages((prev) => [...prev, { sender: "customer", text: chatText }]);
+    setChatText("");
+  }
+
   return (
     <div className="p-8 text-center">
       <h1 className="text-3xl font-bold">Waiting Room</h1>
@@ -110,7 +137,35 @@ export default function WaitingRoom() {
       )}
 
       {status === "assigned" && (
-        <p className="mt-4 text-[var(--color-text-dim)]">Consulente assegnato — chiamata in corso.</p>
+        <div>
+          <p className="mt-4 mb-4 text-[var(--color-text-dim)]">
+            Consulente assegnato — chiamata in corso.
+          </p>
+
+          <div className="mt-4 border rounded p-3 text-left max-w-md mx-auto">
+            <h3 className="font-bold mb-2">Chat</h3>
+            <div className="h-40 overflow-y-auto border p-2 mb-2 bg-white">
+              {messages.map((m, i) => (
+                <div key={i}>
+                  <b>{m.sender}</b>: {m.text}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 border p-2 rounded"
+                value={chatText}
+                onChange={(e) => setChatText(e.target.value)}
+              />
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded"
+                onClick={sendChat}
+              >
+                Invia
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Sempre nel DOM, mai condizionale: il ref deve esistere

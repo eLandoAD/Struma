@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import Navbar from "../../components/Navbar";
 
-const API = "http://localhost:8080/api/analytics";
+function resolveApiUrl(path) {
+  const protocol = location.protocol === "https:" ? "https://" : "http://";
+  if (location.host.endsWith(".app.github.dev")) {
+    const backendHost = location.host.replace(/-\d+\.app\.github\.dev$/, "-8080.app.github.dev");
+    return `${protocol}${backendHost}${path}`;
+  }
+  return `http://localhost:8080${path}`;
+}
 
 export default function AgentDashboard() {
   const [tab, setTab] = useState("current");
@@ -33,7 +40,6 @@ export default function AgentDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Navbar />
       <main className="p-8">
         <h1 className="text-3xl font-bold mb-6">Agent Dashboard - Analytics</h1>
 
